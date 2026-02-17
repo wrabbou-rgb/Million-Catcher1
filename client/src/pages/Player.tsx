@@ -189,13 +189,19 @@ export default function Player() {
     optionsWithMoney > 0 &&
     optionsWithMoney < totalOptions;
 
+  // Sincronización con el estado global del juego para asegurar actualizaciones en vivo
   useEffect(() => {
-    setLocalDistribution({});
-    setIsConfirmed(false);
-    setIsRevealed(false);
-    setIsEliminated(false);
-    setCountdown(null);
-  }, [localQIndex]);
+    if (gameState?.status === "playing") {
+      setLocalDistribution({});
+      setIsConfirmed(false);
+      setIsRevealed(false);
+      // Solo resetear si no estamos eliminados
+      if (localMoney > 0) {
+        setIsEliminated(false);
+      }
+      setCountdown(null);
+    }
+  }, [localQIndex, gameState?.status]);
 
   const handleAddMoney = (optionId: string) => {
     if (availableMoney <= 0 || isConfirmed) return;
@@ -239,13 +245,10 @@ export default function Player() {
           );
           const moneyOnCorrect =
             localDistribution[correctOption?.id || ""] || 0;
-          const nextQIndex = localQIndex + 1;
 
           if (moneyOnCorrect > 0) {
-            const newMoney = moneyOnCorrect;
-            setLocalMoney(newMoney);
+            setLocalMoney(moneyOnCorrect);
             confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-            serverNext(newMoney, nextQIndex, "active");
           } else {
             setLocalMoney(0);
             setIsEliminated(true);
@@ -259,14 +262,18 @@ export default function Player() {
   };
 
   const handleNext = () => {
+    const nextQIndex = localQIndex + 1;
     if (localQIndex >= QUESTIONS.length - 1) {
       setIsFinished(true);
       serverNext(localMoney, QUESTIONS.length, "winner");
     } else {
-      setLocalQIndex((prev) => prev + 1);
+      // Notificamos al servidor el nuevo estado ANTES de cambiar el índice local
+      serverNext(localMoney, nextQIndex, "active");
+      setLocalQIndex(nextQIndex);
     }
   };
 
+  // 1. Pantalla de Unión (Join)
   if (!gameState) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
@@ -317,6 +324,7 @@ export default function Player() {
     );
   }
 
+  // 2. Pantalla de Espera (Waiting)
   if (gameState.status === "waiting") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background space-y-8">
@@ -336,6 +344,7 @@ export default function Player() {
     );
   }
 
+  // 3. Pantalla de Fin de Juego (Winner)
   if (isFinished) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
@@ -353,6 +362,7 @@ export default function Player() {
     );
   }
 
+  // 4. Pantalla de Eliminado
   if (isEliminated && isRevealed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
@@ -367,6 +377,7 @@ export default function Player() {
     );
   }
 
+  // 5. Cuenta atrás para revelación
   if (countdown !== null) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
@@ -387,6 +398,7 @@ export default function Player() {
     );
   }
 
+  // 6. Pantalla Principal de Juego (Playing)
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="p-4 bg-slate-900 border-b border-white/10 flex justify-between items-center sticky top-0 z-50">
