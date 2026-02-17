@@ -71,7 +71,7 @@ export default function Landing() {
       </motion.div>
 
       {/* Footer Watermark */}
-      <div className="absolute bottom-4 right-6 text-white/40 text-sm font-mono tracking-wider">
+      <div className="absolute bottom-4 right-6 text-white/60 text-sm font-mono tracking-wider">
         Developed by Walid Rabbou
       </div>
     </div>

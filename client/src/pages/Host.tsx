@@ -214,7 +214,7 @@ export default function Host() {
         </div>
       </div>
 
-      <div className="fixed bottom-4 right-6 text-white/20 text-xs font-mono">
+      <div className="fixed bottom-4 right-6 text-white/60 text-xs font-mono">
         Developed by Walid Rabbou
       </div>
     </div>

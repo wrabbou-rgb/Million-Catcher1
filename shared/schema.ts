@@ -4,9 +4,6 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // === TABLE DEFINITIONS ===
-// We'll use the DB mainly for storing game sessions and maybe questions if we want them dynamic later.
-// For now, most game state might be in-memory for speed, but let's define structure.
-
 export const questions = pgTable("questions", {
   id: serial("id").primaryKey(),
   text: text("text").notNull(),
@@ -21,7 +18,7 @@ export const games = pgTable("games", {
   hostName: text("host_name").notNull(),
   maxPlayers: integer("max_players").notNull(),
   state: text("state").notNull().default("waiting"), // waiting, playing, finished
-  currentQuestionIndex: integer("current_question_index").default(0),
+  currentQuestionIndex: integer("current_question_index").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -65,23 +62,19 @@ export type JoinGameRequest = {
 // WebSocket Event Types (Shared)
 export const WS_EVENTS = {
   // Client -> Server
-  JOIN_GAME: 'join_game',
-  HOST_GAME: 'host_game',
+  CREATE_ROOM: 'create_room',
+  JOIN_ROOM: 'join_room',
   START_GAME: 'start_game',
-  SUBMIT_ANSWER: 'submit_answer', // { distribution: { A: 0, B: 500000... } }
-  REVEL_ANSWER: 'reveal_answer', // Player clicks reveal
-  NEXT_QUESTION: 'next_question', // Host or auto? Spec says "Player... Después aparece botón SEGUENT PREGUNTA". 
-                                  // Actually spec says "Host NO pasa preguntas... Todo sucede en pantalla del jugador".
-                                  // So NEXT_QUESTION is from Player -> Server to get next Q.
+  UPDATE_BET: 'update_bet',
+  CONFIRM_BET: 'confirm_bet',
+  NEXT_QUESTION: 'next_question',
 
   // Server -> Client
-  GAME_STATE: 'game_state', // General updates
-  PLAYER_UPDATE: 'player_update', // For specific player
-  ERROR: 'error',
-  ROOM_FULL: 'room_full',
+  ROOM_CREATED: 'room_created',
+  PLAYER_JOINED: 'player_joined',
   GAME_STARTED: 'game_started',
-  PLAYER_JOINED: 'player_joined', // For host view
-  LEADERBOARD_UPDATE: 'leaderboard_update', // For host view
+  STATE_UPDATE: 'state_update',
+  ERROR: 'error',
 } as const;
 
 export type MoneyDistribution = Record<string, number>; // "A": 500000, "B": 0...

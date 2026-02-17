@@ -330,7 +330,7 @@ export default function Player() {
         </div>
       </main>
 
-      <div className="fixed bottom-2 right-2 text-white/10 text-[10px] font-mono pointer-events-none">
+      <div className="fixed bottom-4 right-6 text-white/60 text-xs font-mono pointer-events-none">
         Developed by Walid Rabbou
       </div>
     </div>

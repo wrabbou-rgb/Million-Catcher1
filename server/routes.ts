@@ -37,84 +37,97 @@ export async function registerRoutes(
     let currentUserSocketId = socket.id; // Use socket.id as temporary ID
 
     // Handle host creation
-    socket.on(WS_EVENTS.HOST_GAME, async (payload) => {
+    socket.on(WS_EVENTS.CREATE_ROOM, async (payload) => {
       try {
         const code = generateRoomCode();
         const game = await storage.createGame(payload.hostName, payload.maxPlayers, code);
         
-        // Join room
         socket.join(game.id.toString());
         
-        // Store game info on socket object for easy access if needed (or use rooms)
-        // Socket.IO manages rooms, so we can just emit to room.
-        
-        socket.emit(WS_EVENTS.GAME_STARTED, { // Actually just room created/joined as host
-          code, 
-          gameId: game.id,
-          isHost: true 
+        socket.emit(WS_EVENTS.ROOM_CREATED, {
+          roomCode: code,
+          hostName: payload.hostName,
+          maxPlayers: payload.maxPlayers,
+          players: [],
+          status: "waiting",
+          currentQuestionIndex: 0
         });
       } catch (err) {
-        socket.emit(WS_EVENTS.ERROR, { message: "Error al crear la sala" });
+        socket.emit(WS_EVENTS.ERROR, "Error al crear la sala");
       }
     });
 
     // Handle player join
-    socket.on(WS_EVENTS.JOIN_GAME, async (payload) => {
+    socket.on(WS_EVENTS.JOIN_ROOM, async (payload) => {
       try {
-        const { code, name } = payload;
-        const game = await storage.getGameByCode(code);
+        const { roomCode, playerName } = payload;
+        const game = await storage.getGameByCode(roomCode);
         
         if (!game) {
-          socket.emit(WS_EVENTS.ERROR, { message: "Codi de sala invàlid" });
+          socket.emit(WS_EVENTS.ERROR, "Codi incorrecte. Torna-ho a intentar.");
           return;
         }
 
         const players = await storage.getPlayersInGame(game.id);
+        
+        if (players.some(p => p.name.toLowerCase() === playerName.toLowerCase())) {
+          socket.emit(WS_EVENTS.ERROR, "Aquest nom ja està en ús. Tria un altre nom.");
+          return;
+        }
+
         if (players.length >= game.maxPlayers) {
-          socket.emit(WS_EVENTS.ERROR, { message: "La sala està plena" });
+          socket.emit(WS_EVENTS.ERROR, "La sala està plena");
           return;
         }
 
         if (game.state !== "waiting") {
-          socket.emit(WS_EVENTS.ERROR, { message: "La partida ja ha començat" });
+          socket.emit(WS_EVENTS.ERROR, "La partida ja ha començat");
           return;
         }
 
-        const player = await storage.addPlayer(game.id, currentUserSocketId, name);
+        const player = await storage.addPlayer(game.id, socket.id, playerName);
         
         socket.join(game.id.toString());
 
         // Notify everyone in game (host needs to know)
-        io.to(game.id.toString()).emit(WS_EVENTS.PLAYER_JOINED, { player });
+        const updatedPlayers = await storage.getPlayersInGame(game.id);
+        const gameState = {
+          roomCode: game.code,
+          hostName: game.hostName,
+          maxPlayers: game.maxPlayers,
+          players: updatedPlayers,
+          status: game.state,
+          currentQuestionIndex: game.currentQuestionIndex
+        };
 
-        // Send initial state to player
-        socket.emit(WS_EVENTS.GAME_STATE, { 
-          state: game.state,
-          player,
-          playerId: player.id,
-          gameId: game.id,
-          questions: await storage.getQuestions()
+        io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, gameState);
+        
+        socket.emit("game_joined", {
+          gameState,
+          player
         });
       } catch (err) {
-        socket.emit(WS_EVENTS.ERROR, { message: "Error al unir-se a la sala" });
+        socket.emit(WS_EVENTS.ERROR, "Error al unir-se a la sala");
       }
     });
 
     // Handle game start
-    socket.on(WS_EVENTS.START_GAME, async () => {
-      // In a real app we'd verify if socket is host, but for now we trust the event 
-      // or check if the socket is in the room and is the creator (we didn't store creator socketId in DB, just name).
-      // For simplicity, we allow it.
-      
-      // We need gameId. We can get it from the room the socket is in.
-      const rooms = Array.from(socket.rooms);
-      const gameIdStr = rooms.find(r => r !== socket.id);
-      
-      if (gameIdStr) {
-        const gameId = parseInt(gameIdStr);
-        await storage.updateGameState(gameId, "playing");
+    socket.on(WS_EVENTS.START_GAME, async (payload) => {
+      const { roomCode } = payload;
+      const game = await storage.getGameByCode(roomCode);
+      if (game) {
+        await storage.updateGameState(game.id, "playing");
+        io.to(game.id.toString()).emit(WS_EVENTS.GAME_STARTED);
         
-        io.to(gameIdStr).emit(WS_EVENTS.GAME_STARTED, {});
+        const players = await storage.getPlayersInGame(game.id);
+        io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, {
+          roomCode: game.code,
+          hostName: game.hostName,
+          maxPlayers: game.maxPlayers,
+          players,
+          status: "playing",
+          currentQuestionIndex: 0
+        });
       }
     });
 
