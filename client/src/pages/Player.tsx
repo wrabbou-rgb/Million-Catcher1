@@ -19,7 +19,7 @@ const QUESTIONS = [
       { id: "B", text: "1878", isCorrect: false },
       { id: "C", text: "1880", isCorrect: false },
       { id: "D", text: "1885", isCorrect: false },
-    ]
+    ],
   },
   {
     id: 2,
@@ -29,17 +29,33 @@ const QUESTIONS = [
       { id: "B", text: "El cigonyal", isCorrect: true },
       { id: "C", text: "El volant d'inèrcia", isCorrect: false },
       { id: "D", text: "L'arbre de lleves", isCorrect: false },
-    ]
+    ],
   },
   {
     id: 3,
     text: "En quin ordre es produeixen les fases del motor de 4 temps?",
     options: [
-      { id: "A", text: "Compressió, admissió, explosió, escapament", isCorrect: false },
-      { id: "B", text: "Admissió, compressió, explosió, escapament", isCorrect: true },
-      { id: "C", text: "Explosió, compressió, admissió, escapament", isCorrect: false },
-      { id: "D", text: "Admissió, explosió, compressió, escapament", isCorrect: false },
-    ]
+      {
+        id: "A",
+        text: "Compressió, admissió, explosió, escapament",
+        isCorrect: false,
+      },
+      {
+        id: "B",
+        text: "Admissió, compressió, explosió, escapament",
+        isCorrect: true,
+      },
+      {
+        id: "C",
+        text: "Explosió, compressió, admissió, escapament",
+        isCorrect: false,
+      },
+      {
+        id: "D",
+        text: "Admissió, explosió, compressió, escapament",
+        isCorrect: false,
+      },
+    ],
   },
   {
     id: 4,
@@ -48,34 +64,62 @@ const QUESTIONS = [
       { id: "A", text: "500 °C", isCorrect: false },
       { id: "B", text: "1.000 °C", isCorrect: false },
       { id: "C", text: "2.000 °C", isCorrect: true },
-    ]
+    ],
   },
   {
     id: 5,
     text: "Què és el càrter en un motor Otto?",
     options: [
-      { id: "A", text: "La peça que tanca els cilindres per dalt", isCorrect: false },
-      { id: "B", text: "El dipòsit d'oli a la part inferior del motor", isCorrect: true },
-      { id: "C", text: "L'element que uneix el pistó amb el cigonyal", isCorrect: false },
-    ]
+      {
+        id: "A",
+        text: "La peça que tanca els cilindres per dalt",
+        isCorrect: false,
+      },
+      {
+        id: "B",
+        text: "El dipòsit d'oli a la part inferior del motor",
+        isCorrect: true,
+      },
+      {
+        id: "C",
+        text: "L'element que uneix el pistó amb el cigonyal",
+        isCorrect: false,
+      },
+    ],
   },
   {
     id: 6,
     text: "Segons el Segon Principi de la Termodinàmica aplicat al motor:",
     options: [
-      { id: "A", text: "Tota la calor es converteix en treball útil", isCorrect: false },
-      { id: "B", text: "Part de l'energia s'ha de cedir a un focus fred", isCorrect: true },
-      { id: "C", text: "No es pot generar energia mecànica des de calor", isCorrect: false },
-    ]
+      {
+        id: "A",
+        text: "Tota la calor es converteix en treball útil",
+        isCorrect: false,
+      },
+      {
+        id: "B",
+        text: "Part de l'energia s'ha de cedir a un focus fred",
+        isCorrect: true,
+      },
+      {
+        id: "C",
+        text: "No es pot generar energia mecànica des de calor",
+        isCorrect: false,
+      },
+    ],
   },
   {
     id: 7,
     text: "Quina diferència principal té el motor de 2 temps respecte al de 4 temps?",
     options: [
       { id: "A", text: "Té vàlvules més complexes", isCorrect: false },
-      { id: "B", text: "Completa el cicle en una volta de cigonyal", isCorrect: true },
+      {
+        id: "B",
+        text: "Completa el cicle en una volta de cigonyal",
+        isCorrect: true,
+      },
       { id: "C", text: "És menys contaminant", isCorrect: false },
-    ]
+    ],
   },
   {
     id: 8,
@@ -83,8 +127,8 @@ const QUESTIONS = [
     options: [
       { id: "A", text: "90 °C", isCorrect: true },
       { id: "B", text: "150 °C", isCorrect: false },
-    ]
-  }
+    ],
+  },
 ];
 
 const formatMoney = (amount: number) => {
@@ -97,8 +141,10 @@ const formatMoney = (amount: number) => {
 };
 
 const getRulesText = (questionIndex: number) => {
-  if (questionIndex < 3) return "📋 Tens 4 opcions. Reparteix els diners en un màxim de 3 respostes. Una ha de quedar buida.";
-  if (questionIndex < 7) return "📋 Tens 3 opcions. Reparteix els diners en un màxim de 2 respostes. Una ha de quedar buida.";
+  if (questionIndex < 3)
+    return "📋 Tens 4 opcions. Reparteix els diners en un màxim de 3 respostes. Una ha de quedar buida.";
+  if (questionIndex < 7)
+    return "📋 Tens 3 opcions. Reparteix els diners en un màxim de 2 respostes. Una ha de quedar buida.";
   return "📋 FINAL: 2 opcions. Tot o res. Has de posar tots els diners en UNA sola opció.";
 };
 
@@ -110,7 +156,7 @@ export default function Player() {
     updateBet,
     confirmBet: serverConfirm,
     nextQuestion: serverNext,
-    isJoining
+    isJoining,
   } = usePlayerGame();
 
   const [roomCode, setRoomCode] = useState("");
@@ -119,7 +165,9 @@ export default function Player() {
   // LOCAL question index - this is what controls the screen
   const [localQIndex, setLocalQIndex] = useState(0);
   const [localMoney, setLocalMoney] = useState(1000000);
-  const [localDistribution, setLocalDistribution] = useState<Record<string, number>>({});
+  const [localDistribution, setLocalDistribution] = useState<
+    Record<string, number>
+  >({});
   const [isConfirmed, setIsConfirmed] = useState(false);
   const [isRevealed, setIsRevealed] = useState(false);
   const [isEliminated, setIsEliminated] = useState(false);
@@ -128,10 +176,15 @@ export default function Player() {
 
   const currentQuestion = QUESTIONS[localQIndex];
 
-  const distributedAmount = Object.values(localDistribution).reduce((a, b) => a + b, 0);
+  const distributedAmount = Object.values(localDistribution).reduce(
+    (a, b) => a + b,
+    0,
+  );
   const availableMoney = localMoney - distributedAmount;
 
-  const optionsWithMoney = Object.values(localDistribution).filter(v => v > 0).length;
+  const optionsWithMoney = Object.values(localDistribution).filter(
+    (v) => v > 0,
+  ).length;
   const totalOptions = currentQuestion?.options.length || 0;
   const isValid = availableMoney === 0 && optionsWithMoney < totalOptions;
 
@@ -147,9 +200,9 @@ export default function Player() {
     if (availableMoney <= 0) return;
     const step = 50000;
     const toAdd = Math.min(step, availableMoney);
-    setLocalDistribution(prev => ({
+    setLocalDistribution((prev) => ({
       ...prev,
-      [optionId]: (prev[optionId] || 0) + toAdd
+      [optionId]: (prev[optionId] || 0) + toAdd,
     }));
   };
 
@@ -158,9 +211,9 @@ export default function Player() {
     if (current <= 0) return;
     const step = 50000;
     const toRemove = Math.min(step, current);
-    setLocalDistribution(prev => ({
+    setLocalDistribution((prev) => ({
       ...prev,
-      [optionId]: current - toRemove
+      [optionId]: current - toRemove,
     }));
   };
 
@@ -173,15 +226,18 @@ export default function Player() {
     // Start countdown
     setCountdown(3);
     const interval = setInterval(() => {
-      setCountdown(prev => {
+      setCountdown((prev) => {
         if (prev === null || prev <= 1) {
           clearInterval(interval);
           setCountdown(null);
           setIsRevealed(true);
 
           // Calculate result
-          const correctOption = currentQuestion.options.find(o => o.isCorrect);
-          const moneyOnCorrect = localDistribution[correctOption?.id || ""] || 0;
+          const correctOption = currentQuestion.options.find(
+            (o) => o.isCorrect,
+          );
+          const moneyOnCorrect =
+            localDistribution[correctOption?.id || ""] || 0;
 
           if (moneyOnCorrect > 0) {
             // Survived - update local money
@@ -189,7 +245,7 @@ export default function Player() {
             confetti({
               particleCount: 150,
               spread: 80,
-              origin: { y: 0.6 }
+              origin: { y: 0.6 },
             });
             // Sync with server
             serverNext();
@@ -210,7 +266,7 @@ export default function Player() {
     if (localQIndex >= QUESTIONS.length - 1) {
       setIsFinished(true);
     } else {
-      setLocalQIndex(prev => prev + 1);
+      setLocalQIndex((prev) => prev + 1);
     }
   };
 
@@ -224,8 +280,12 @@ export default function Player() {
           className="w-full max-w-md"
         >
           <Card className="p-8 bg-black/40 border-white/10 backdrop-blur-xl">
-            <h1 className="text-4xl text-center mb-2 text-primary font-bold">ATRAPA UN MILIÓ</h1>
-            <p className="text-center text-slate-400 mb-8">Motor de Cicle Otto</p>
+            <h1 className="text-4xl text-center mb-2 text-primary font-bold">
+              ATRAPA UN MILIÓ
+            </h1>
+            <p className="text-center text-slate-400 mb-8">
+              Motor de Cicle Otto
+            </p>
             <div className="space-y-6">
               <div className="space-y-2">
                 <Label className="text-slate-300">El teu nom</Label>
@@ -270,9 +330,15 @@ export default function Player() {
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background space-y-8">
         <Loader2 className="w-16 h-16 text-primary animate-spin" />
         <div className="text-center space-y-4">
-          <h2 className="text-4xl text-white font-bold">PREPARAT, {myPlayer?.name?.toUpperCase()}!</h2>
-          <p className="text-slate-400">Esperant que el presentador comenci la partida...</p>
-          <div className="text-3xl font-bold text-primary">{formatMoney(1000000)}</div>
+          <h2 className="text-4xl text-white font-bold">
+            PREPARAT, {myPlayer?.name?.toUpperCase()}!
+          </h2>
+          <p className="text-slate-400">
+            Esperant que el presentador comenci la partida...
+          </p>
+          <div className="text-3xl font-bold text-primary">
+            {formatMoney(1000000)}
+          </div>
           <p className="text-slate-500 text-sm">Balance inicial</p>
         </div>
         <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
@@ -289,10 +355,14 @@ export default function Player() {
         <div className="text-center space-y-6">
           <div className="text-8xl">🏆</div>
           <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>
-          <p className="text-white text-xl">Has completat totes les preguntes!</p>
+          <p className="text-white text-xl">
+            Has completat totes les preguntes!
+          </p>
           <div className="p-6 bg-slate-900 rounded-xl border border-yellow-400/30">
             <p className="text-slate-400 text-sm mb-2">Premi final</p>
-            <p className="text-4xl font-bold text-yellow-400">{formatMoney(localMoney)}</p>
+            <p className="text-4xl font-bold text-yellow-400">
+              {formatMoney(localMoney)}
+            </p>
           </div>
         </div>
         <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
@@ -309,7 +379,9 @@ export default function Player() {
         <div className="text-center space-y-6">
           <XCircle className="w-24 h-24 text-red-500 mx-auto" />
           <h1 className="text-5xl font-black text-red-500">ELIMINAT!</h1>
-          <p className="text-white text-xl">No tenies diners en la resposta correcta.</p>
+          <p className="text-white text-xl">
+            No tenies diners en la resposta correcta.
+          </p>
           <div className="p-6 bg-slate-900 rounded-xl">
             <p className="text-slate-400 text-sm mb-2">Balance final</p>
             <p className="text-4xl font-bold text-red-500">0 €</p>
@@ -352,16 +424,28 @@ export default function Player() {
       {/* Top Bar */}
       <header className="p-4 bg-slate-900 border-b border-white/10 flex justify-between items-center sticky top-0 z-50">
         <div className="flex flex-col">
-          <span className="text-slate-400 text-xs uppercase tracking-widest">Pregunta</span>
-          <span className="text-white font-bold text-xl">{localQIndex + 1} / {QUESTIONS.length}</span>
+          <span className="text-slate-400 text-xs uppercase tracking-widest">
+            Pregunta
+          </span>
+          <span className="text-white font-bold text-xl">
+            {localQIndex + 1} / {QUESTIONS.length}
+          </span>
         </div>
         <div className="flex flex-col items-center">
-          <span className="text-slate-400 text-xs uppercase tracking-widest">Balance</span>
-          <span className="text-yellow-400 font-bold text-lg">{formatMoney(localMoney)}</span>
+          <span className="text-slate-400 text-xs uppercase tracking-widest">
+            Balance
+          </span>
+          <span className="text-yellow-400 font-bold text-lg">
+            {formatMoney(localMoney)}
+          </span>
         </div>
         <div className="flex flex-col items-end">
-          <span className="text-slate-400 text-xs uppercase tracking-widest">Disponible</span>
-          <span className={`text-2xl font-mono font-bold ${availableMoney === 0 ? "text-green-500" : "text-yellow-400"}`}>
+          <span className="text-slate-400 text-xs uppercase tracking-widest">
+            Disponible
+          </span>
+          <span
+            className={`text-2xl font-mono font-bold ${availableMoney === 0 ? "text-green-500" : "text-yellow-400"}`}
+          >
             {formatMoney(availableMoney)}
           </span>
         </div>
@@ -392,7 +476,9 @@ export default function Player() {
               onAdd={() => handleAddMoney(option.id)}
               onRemove={() => handleRemoveMoney(option.id)}
               disabled={isConfirmed}
-              result={isRevealed ? (option.isCorrect ? "correct" : "incorrect") : null}
+              result={
+                isRevealed ? (option.isCorrect ? "correct" : "incorrect") : null
+              }
               showResult={isRevealed}
             />
           ))}
@@ -412,7 +498,9 @@ export default function Player() {
             {!isEliminated ? (
               <>
                 <p className="text-2xl font-bold">✅ CORRECTE!</p>
-                <p className="text-lg">Nou balance: {formatMoney(localMoney)}</p>
+                <p className="text-lg">
+                  Nou balance: {formatMoney(localMoney)}
+                </p>
               </>
             ) : (
               <>
