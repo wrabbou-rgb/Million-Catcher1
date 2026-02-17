@@ -13,7 +13,7 @@ import confetti from "canvas-confetti";
 const QUESTIONS = [
   {
     id: 1,
-    text: "Quin any va inventar Nikolaus August Otto el primer motor de quatre temps amb compressió?",
+    text: "En quin any va inventar Nikolaus August Otto el primer motor de quatre temps amb compressió?",
     options: [
       { id: "A", text: "1876", isCorrect: true },
       { id: "B", text: "1878", isCorrect: false },
@@ -163,7 +163,10 @@ export default function Player() {
   const [isEliminated, setIsEliminated] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+
+  // CRONÓMETRO LOCAL (SIN DEPENDER DEL SERVIDOR)
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [timerStarted, setTimerStarted] = useState(false);
 
   const currentQuestion = QUESTIONS[localQIndex];
   const distributedAmount = Object.values(localDistribution).reduce(
@@ -181,10 +184,9 @@ export default function Player() {
     optionsWithMoney > 0 &&
     optionsWithMoney < totalOptions;
 
-  // --- SINCRONIZACIÓN FORZADA CON EL HOST ---
+  // Sincronización con el Host
   useEffect(() => {
     if (gameState) {
-      // Si el Host avanza la pregunta, nosotros también sincronizamos localmente
       if (
         gameState.currentQuestionIndex !== undefined &&
         gameState.currentQuestionIndex !== localQIndex
@@ -194,11 +196,9 @@ export default function Player() {
         setIsConfirmed(false);
         setIsRevealed(false);
         setCountdown(null);
-        // Usamos cast 'as any' para evitar el error de TS en la captura
-        setTimeLeft((gameState as any).questionTimer || 30);
+        setTimeLeft(30); // Reset tiempo
+        setTimerStarted(false); // Pausar hasta que toque un botón
       }
-
-      // Sincronización de balance real desde el servidor
       if (
         myPlayer &&
         myPlayer.money !== undefined &&
@@ -210,23 +210,19 @@ export default function Player() {
     }
   }, [gameState, myPlayer, localQIndex, localMoney]);
 
-  // --- LÓGICA DE CUENTA ATRÁS ---
+  // Lógica del Timer
   useEffect(() => {
-    let timer: NodeJS.Timeout;
-    if (
-      gameState?.status === "playing" &&
-      timeLeft !== null &&
-      timeLeft > 0 &&
-      !isConfirmed
-    ) {
-      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-    } else if (timeLeft === 0 && !isConfirmed) {
-      handleConfirm(); // Auto-confirmación al agotar tiempo
+    let interval: NodeJS.Timeout;
+    if (timerStarted && timeLeft > 0 && !isConfirmed) {
+      interval = setInterval(() => setTimeLeft((prev) => prev - 1), 1000);
+    } else if (timeLeft === 0 && !isConfirmed && timerStarted) {
+      handleConfirm(); // Auto-confirmar al llegar a 0
     }
-    return () => clearTimeout(timer);
-  }, [timeLeft, gameState?.status, isConfirmed]);
+    return () => clearInterval(interval);
+  }, [timerStarted, timeLeft, isConfirmed]);
 
   const handleAddMoney = (optionId: string) => {
+    if (!timerStarted) setTimerStarted(true); // Arranca el tiempo al primer toque
     if (availableMoney <= 0 || isConfirmed || timeLeft === 0) return;
     const step = 50000;
     const toAdd = Math.min(step, availableMoney);
@@ -250,6 +246,7 @@ export default function Player() {
 
   const handleConfirm = () => {
     setIsConfirmed(true);
+    setTimerStarted(false);
     serverConfirm();
   };
 
@@ -285,124 +282,110 @@ export default function Player() {
       setIsFinished(true);
       serverNext(localMoney, QUESTIONS.length, "winner");
     } else {
-      // Notificamos al servidor, la UI se actualizará vía el useEffect de sincronización
       serverNext(localMoney, nextQIndex, "active");
     }
   };
 
-  // --- RENDERIZADO DE PANTALLAS ---
   if (!gameState)
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
-        {" "}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="w-full max-w-md"
         >
-          {" "}
           <Card className="p-8 bg-black/40 border-white/10 backdrop-blur-xl">
-            {" "}
             <h1 className="text-4xl text-center mb-2 text-primary font-bold">
               ATRAPA UN MILIÓ
-            </h1>{" "}
+            </h1>
             <p className="text-center text-slate-400 mb-8">
               Motor de Cicle Otto
-            </p>{" "}
+            </p>
             <div className="space-y-6">
-              {" "}
               <div className="space-y-2">
-                {" "}
-                <Label className="text-slate-300">El teu nom</Label>{" "}
+                <Label className="text-slate-300">El teu nom</Label>
                 <Input
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
                   className="bg-slate-900/50 border-slate-700 text-lg h-12"
                   placeholder="El teu nom..."
-                />{" "}
-              </div>{" "}
+                />
+              </div>
               <div className="space-y-2">
-                {" "}
-                <Label className="text-slate-300">Codi de la Sala</Label>{" "}
+                <Label className="text-slate-300">Codi de la Sala</Label>
                 <Input
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                   className="bg-slate-900/50 border-slate-700 text-lg h-12 font-mono uppercase tracking-widest text-center"
                   placeholder="XXXXXX"
                   maxLength={6}
-                />{" "}
-              </div>{" "}
+                />
+              </div>
               <NeonButton
                 onClick={() => joinRoom(roomCode, playerName)}
                 disabled={!roomCode || !playerName}
                 isLoading={isJoining}
                 className="w-full"
               >
-                {" "}
-                UNIR-SE A LA PARTIDA{" "}
-              </NeonButton>{" "}
-            </div>{" "}
-          </Card>{" "}
-        </motion.div>{" "}
+                UNIR-SE A LA PARTIDA
+              </NeonButton>
+            </div>
+          </Card>
+        </motion.div>
       </div>
     );
+
   if (gameState.status === "waiting")
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background space-y-8">
-        {" "}
-        <Loader2 className="w-16 h-16 text-primary animate-spin" />{" "}
+        <Loader2 className="w-16 h-16 text-primary animate-spin" />
         <div className="text-center space-y-4">
-          {" "}
           <h2 className="text-4xl text-white font-bold">
             PREPARAT, {myPlayer?.name?.toUpperCase()}!
-          </h2>{" "}
+          </h2>
           <p className="text-slate-400">
             Esperant que el presentador comenci la partida...
-          </p>{" "}
+          </p>
           <div className="text-3xl font-bold text-primary">
             {formatMoney(1000000)}
-          </div>{" "}
-        </div>{" "}
+          </div>
+        </div>
       </div>
     );
+
   if (isFinished)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
-        {" "}
         <div className="text-center space-y-6">
-          {" "}
-          <div className="text-8xl">🏆</div>{" "}
-          <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>{" "}
+          <div className="text-8xl">🏆</div>
+          <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>
           <div className="p-6 bg-slate-900 rounded-xl border border-yellow-400/30">
-            {" "}
-            <p className="text-slate-400 text-sm mb-2">Premi final</p>{" "}
+            <p className="text-slate-400 text-sm mb-2">Premi final</p>
             <p className="text-4xl font-bold text-yellow-400">
               {formatMoney(localMoney)}
-            </p>{" "}
-          </div>{" "}
-        </div>{" "}
+            </p>
+          </div>
+        </div>
       </div>
     );
+
   if (isEliminated && isRevealed)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
-        {" "}
         <div className="text-center space-y-6">
-          {" "}
-          <XCircle className="w-24 h-24 text-red-500 mx-auto" />{" "}
-          <h1 className="text-5xl font-black text-red-500">ELIMINAT!</h1>{" "}
+          <XCircle className="w-24 h-24 text-red-500 mx-auto" />
+          <h1 className="text-5xl font-black text-red-500">ELIMINAT!</h1>
           <p className="text-white text-xl">
             No tenies diners en la resposta correcta.
-          </p>{" "}
-        </div>{" "}
+          </p>
+        </div>
       </div>
     );
+
   if (countdown !== null)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
-        {" "}
         <AnimatePresence mode="wait">
-          {" "}
           <motion.div
             key={countdown}
             initial={{ scale: 2, opacity: 0 }}
@@ -411,15 +394,10 @@ export default function Player() {
             transition={{ duration: 0.4 }}
             className="text-center"
           >
-            {" "}
-            <div className="text-9xl font-black text-primary">
-              {countdown}
-            </div>{" "}
-            <p className="text-white text-2xl mt-4">
-              Revelant la resposta...
-            </p>{" "}
-          </motion.div>{" "}
-        </AnimatePresence>{" "}
+            <div className="text-9xl font-black text-primary">{countdown}</div>
+            <p className="text-white text-2xl mt-4">Revelant la resposta...</p>
+          </motion.div>
+        </AnimatePresence>
       </div>
     );
 
@@ -435,18 +413,18 @@ export default function Player() {
           </span>
         </div>
 
-        {/* RELOJ DE CUENTA ATRÁS */}
+        {/* AQUÍ SE USA EL TIMER PARA QUE NO SALGA EL ERROR DE TS */}
         <div className="flex flex-col items-center">
           <div
-            className={`flex items-center gap-2 px-4 py-1 rounded-full border transition-all ${timeLeft !== null && timeLeft <= 5 ? "bg-red-500/20 border-red-500 animate-pulse" : "bg-slate-800 border-slate-700"}`}
+            className={`flex items-center gap-2 px-4 py-1 rounded-full border transition-all ${timeLeft <= 5 && timerStarted ? "bg-red-500/20 border-red-500 animate-pulse" : "bg-slate-800 border-slate-700"}`}
           >
             <Timer
-              className={`w-4 h-4 ${timeLeft !== null && timeLeft <= 5 ? "text-red-500" : "text-primary"}`}
+              className={`w-4 h-4 ${timeLeft <= 5 && timerStarted ? "text-red-500" : "text-primary"}`}
             />
             <span
-              className={`font-mono font-bold text-xl ${timeLeft !== null && timeLeft <= 5 ? "text-red-500" : "text-white"}`}
+              className={`font-mono font-bold text-xl ${timeLeft <= 5 && timerStarted ? "text-red-500" : "text-white"}`}
             >
-              {timeLeft ?? "--"}s
+              {timeLeft}s
             </span>
           </div>
         </div>
@@ -489,7 +467,6 @@ export default function Player() {
           ))}
         </div>
 
-        {/* BLOQUE DE RESULTADO */}
         {isRevealed && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -498,17 +475,15 @@ export default function Player() {
           >
             {!isEliminated ? (
               <>
-                {" "}
-                <p className="text-2xl font-bold">✅ CORRECTE!</p>{" "}
+                <p className="text-2xl font-bold">✅ CORRECTE!</p>
                 <p className="text-lg">
                   Nou balance: {formatMoney(localMoney)}
-                </p>{" "}
+                </p>
               </>
             ) : (
               <>
-                {" "}
-                <p className="text-2xl font-bold">❌ ELIMINAT!</p>{" "}
-                <p className="text-lg">Balance final: 0 €</p>{" "}
+                <p className="text-2xl font-bold">❌ ELIMINAT!</p>
+                <p className="text-lg">Balance final: 0 €</p>
               </>
             )}
           </motion.div>

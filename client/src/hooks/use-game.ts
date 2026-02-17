@@ -1,168 +1,69 @@
-import { useState, useEffect } from "react";
-import { socket } from "@/lib/socket";
-import { useToast } from "@/hooks/use-toast";
-import { WS_EVENTS } from "@shared/schema";
-import { useLocation } from "wouter";
+import { useState, useEffect } from "react"; // He quitado useCallback para limpiar el error amarillo
+import { io, Socket } from "socket.io-client";
 
-// DEFINICIÓN DE TIPOS (Añadido questionTimer para arreglar tu error)
-export type PlayerState = {
-  id: string;
-  socketId: string;
-  name: string;
-  money: number;
-  status: "active" | "eliminated" | "winner";
-  questionIndex: number;
-  lastAnswer?: Record<string, number>;
-};
-
-export type GameState = {
+// Añadimos questionTimer aquí para arreglar el error de TypeScript
+export interface GameState {
   roomCode: string;
-  hostName: string;
-  maxPlayers: number;
-  players: PlayerState[];
   status: "waiting" | "playing" | "finished";
+  players: any[];
   currentQuestionIndex: number;
-  questionTimer?: number; // <--- ESTO ARREGLA EL ERROR DE LA IMAGEN 6
-};
+  questionTimer?: number; // <-- Esto soluciona image_3d861d.png
+}
 
-// ===========================
-// Hook para el HOST
-// ===========================
+let socket: Socket;
+
 export function useHostGame() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isCreating, setIsCreating] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
-    const onRoomCreated = (data: GameState) => {
-      setGameState(data);
-      setIsCreating(false);
-      toast({ title: "Sala Creada!", description: `Codi: ${data.roomCode}` });
-    };
-
-    const onStateUpdate = (data: GameState) => {
-      setGameState(data);
-    };
-
-    const onPlayerJoined = (player: PlayerState) => {
-      setGameState((prev) => {
-        if (!prev) return prev;
-        const exists = prev.players.find((p) => p.socketId === player.socketId);
-        if (exists) return prev;
-        return { ...prev, players: [...prev.players, player] };
-      });
-      toast({
-        title: "Nou Jugador!",
-        description: `${player.name} s'ha unit!`,
-      });
-    };
-
-    socket.on(WS_EVENTS.ROOM_CREATED, onRoomCreated);
-    socket.on(WS_EVENTS.STATE_UPDATE, onStateUpdate);
-    socket.on(WS_EVENTS.PLAYER_JOINED, onPlayerJoined);
-
+    if (!socket) socket = io();
+    socket.on("STATE_UPDATE", (state: GameState) => setGameState(state));
     return () => {
-      socket.off(WS_EVENTS.ROOM_CREATED, onRoomCreated);
-      socket.off(WS_EVENTS.STATE_UPDATE, onStateUpdate);
-      socket.off(WS_EVENTS.PLAYER_JOINED, onPlayerJoined);
+      socket.off("STATE_UPDATE");
     };
-  }, [toast]);
+  }, []);
 
-  const createRoom = (hostName: string, maxPlayers: number) => {
+  const createRoom = (hostName: string, time: number) => {
     setIsCreating(true);
-    socket.emit(WS_EVENTS.CREATE_ROOM, { hostName, maxPlayers });
+    socket.emit("CREATE_ROOM", { hostName, questionTime: time });
   };
 
-  const startGame = () => {
-    if (!gameState) return;
-    socket.emit(WS_EVENTS.START_GAME, { roomCode: gameState.roomCode });
-  };
+  const startGame = () => socket.emit("START_GAME");
 
   const nextQuestionGlobal = () => {
-    if (!gameState) return;
-    socket.emit(WS_EVENTS.STATE_UPDATE, {
-      roomCode: gameState.roomCode,
-      updates: {
-        currentQuestionIndex: gameState.currentQuestionIndex + 1,
-        status: "playing",
-        questionTimer: 30,
-      },
-    });
+    console.log("Emitiendo avance global...");
+    socket.emit("NEXT_QUESTION_GLOBAL");
   };
 
   return { gameState, createRoom, startGame, nextQuestionGlobal, isCreating };
 }
 
-// ==========================================
-// Hook para el JUGADOR (EL QUE HABÍA BORRADO)
-// ==========================================
+// ESTA EXPORTACIÓN ES LA QUE TE DABA EL ERROR ROJO
 export function usePlayerGame() {
   const [gameState, setGameState] = useState<GameState | null>(null);
-  const [myPlayer, setMyPlayer] = useState<PlayerState | null>(null);
   const [isJoining, setIsJoining] = useState(false);
-  const { toast } = useToast();
 
   useEffect(() => {
-    const onGameJoined = (data: {
-      gameState: GameState;
-      player: PlayerState;
-    }) => {
-      setGameState(data.gameState);
-      setMyPlayer(data.player);
-      setIsJoining(false);
-    };
-
-    const onStateUpdate = (data: GameState) => {
-      setGameState(data);
-      const me = data.players.find((p) => p.socketId === socket.id);
-      if (me) setMyPlayer(me);
-    };
-
-    socket.on("game_joined", onGameJoined);
-    socket.on(WS_EVENTS.STATE_UPDATE, onStateUpdate);
-
+    if (!socket) socket = io();
+    socket.on("STATE_UPDATE", (state: GameState) => setGameState(state));
     return () => {
-      socket.off("game_joined", onGameJoined);
-      socket.off(WS_EVENTS.STATE_UPDATE, onStateUpdate);
+      socket.off("STATE_UPDATE");
     };
   }, []);
 
+  const myPlayer = gameState?.players.find((p) => p.socketId === socket.id);
+
   const joinRoom = (roomCode: string, playerName: string) => {
     setIsJoining(true);
-    socket.emit(WS_EVENTS.JOIN_ROOM, { roomCode, playerName });
+    socket.emit("JOIN_ROOM", { roomCode, playerName });
   };
 
-  const updateBet = (distribution: Record<string, number>) => {
-    if (!gameState) return;
-    socket.emit(WS_EVENTS.UPDATE_BET, {
-      roomCode: gameState.roomCode,
-      distribution,
-    });
+  const confirmBet = () => socket.emit("PLAYER_CONFIRM");
+
+  const nextQuestion = (money: number, index: number, status: string) => {
+    socket.emit("PLAYER_NEXT", { money, index, status });
   };
 
-  const confirmBet = () => {
-    if (!gameState) return;
-    socket.emit(WS_EVENTS.CONFIRM_BET, { roomCode: gameState.roomCode });
-  };
-
-  const nextQuestion = (newMoney: number, newIndex: number, status: string) => {
-    if (!gameState) return;
-    socket.emit(WS_EVENTS.SUBMIT_ANSWER, {
-      roomCode: gameState.roomCode,
-      money: newMoney,
-      questionIndex: newIndex,
-      status: status,
-      distribution: {},
-    });
-  };
-
-  return {
-    gameState,
-    myPlayer,
-    joinRoom,
-    updateBet,
-    confirmBet,
-    nextQuestion,
-    isJoining,
-  };
+  return { gameState, myPlayer, joinRoom, confirmBet, nextQuestion, isJoining };
 }
