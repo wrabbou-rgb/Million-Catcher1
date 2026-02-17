@@ -6,13 +6,25 @@ import { MoneyDisplay } from "@/components/MoneyDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Eye, ArrowRight, Trophy } from "lucide-react";
+import {
+  Eye,
+  ArrowRight,
+  Trophy,
+  TrendingUp,
+  TrendingDown,
+  Minus,
+} from "lucide-react";
 import clsx from "clsx";
+import { useEffect, useRef, useState } from "react";
 
 export default function GameDashboard() {
   const [, params] = useRoute("/host/game/:code");
   const roomCode = params?.code || "";
   const { gameState, revealResult, nextQuestion } = useGameSocket();
+
+  // ✅ Guardamos el ranking anterior para comparar posiciones
+  const prevRankRef = useRef<Record<string, number>>({});
+  const [rankChanges, setRankChanges] = useState<Record<string, number>>({});
 
   const sortedPlayers = [...(gameState?.players || [])].sort((a, b) => {
     if (a.status !== b.status) return a.status === "active" ? -1 : 1;
@@ -26,12 +38,37 @@ export default function GameDashboard() {
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
 
+  // Cada vez que cambia el orden, calculamos el delta de posición
+  useEffect(() => {
+    if (sortedPlayers.length === 0) return;
+
+    const currentRank: Record<string, number> = {};
+    sortedPlayers.forEach((p, i) => {
+      currentRank[p.id] = i + 1;
+    });
+
+    const changes: Record<string, number> = {};
+    sortedPlayers.forEach((p) => {
+      const prev = prevRankRef.current[p.id];
+      if (prev !== undefined && prev !== currentRank[p.id]) {
+        changes[p.id] = prev - currentRank[p.id]; // positivo = subió, negativo = bajó
+      }
+    });
+
+    if (Object.keys(changes).length > 0) {
+      setRankChanges(changes);
+      // Limpiamos el indicador después de 3 segundos
+      setTimeout(() => setRankChanges({}), 3000);
+    }
+
+    prevRankRef.current = currentRank;
+  }, [JSON.stringify(sortedPlayers.map((p) => p.id + p.money))]);
+
   // Pantalla de podio cuando termina la partida
   if (gameState?.status === "finished") {
     const top3 = sortedPlayers.slice(0, 3);
     const medals = ["🥇", "🥈", "🥉"];
-    const podiumOrder = [1, 0, 2]; // visual: 2º izq, 1º centro, 3º derecha
-    const heights = ["h-40", "h-52", "h-32"];
+    const podiumOrder = [1, 0, 2];
 
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative overflow-hidden">
@@ -54,7 +91,6 @@ export default function GameDashboard() {
             CLASSIFICACIÓ FINAL
           </motion.h1>
 
-          {/* Podio visual */}
           <div className="flex items-end justify-center gap-4 mb-12">
             {podiumOrder.map((playerIdx, visualIdx) => {
               const player = top3[playerIdx];
@@ -87,7 +123,6 @@ export default function GameDashboard() {
             })}
           </div>
 
-          {/* Lista completa */}
           <div className="space-y-2">
             {sortedPlayers.map((player, idx) => (
               <motion.div
@@ -122,14 +157,12 @@ export default function GameDashboard() {
     <div className="min-h-screen bg-background p-6 flex flex-col overflow-hidden">
       <Watermark />
 
-      {/* Top Bar */}
       <div className="flex items-center justify-between mb-8 bg-card/50 backdrop-blur-md p-6 rounded-2xl border border-white/10">
         <div>
           <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
             Pregunta Actual
           </h2>
           <div className="text-3xl font-bold text-white flex items-center gap-3">
-            {/* ✅ FIX: +1 porque el índice empieza en 0 */}
             <span className="text-primary">
               {(gameState?.currentQuestionIndex ?? 0) + 1}
             </span>
@@ -187,6 +220,7 @@ export default function GameDashboard() {
                   player={player}
                   rank={index + 1}
                   revealedAnswer={revealedAnswer}
+                  rankChange={rankChanges[player.id] ?? 0}
                 />
               ))}
             </AnimatePresence>
@@ -245,10 +279,12 @@ function PlayerRow({
   player,
   rank,
   revealedAnswer,
+  rankChange,
 }: {
   player: Player;
   rank: number;
   revealedAnswer: string | null;
+  rankChange: number;
 }) {
   const isConfirmed = player.hasConfirmed;
   const playerBet = (player as any).currentBet || {};
@@ -280,9 +316,40 @@ function PlayerRow({
       <div className="w-12 h-12 flex items-center justify-center font-black text-2xl text-white/20 mr-4">
         #{rank}
       </div>
+
       <div className="flex-1">
         <div className="flex items-center gap-3 mb-1">
           <span className="font-bold text-lg">{player.name}</span>
+
+          {/* ✅ Indicador de cambio de posición */}
+          <AnimatePresence>
+            {rankChange !== 0 && (
+              <motion.div
+                key={`change-${rankChange}`}
+                initial={{ opacity: 0, scale: 0.5, y: -10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.5 }}
+                className={clsx(
+                  "flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-black",
+                  rankChange > 0
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-red-500/20 text-red-400",
+                )}
+              >
+                {rankChange > 0 ? (
+                  <>
+                    <TrendingUp className="w-3 h-3" />+{rankChange}
+                  </>
+                ) : (
+                  <>
+                    <TrendingDown className="w-3 h-3" />
+                    {rankChange}
+                  </>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {isConfirmed && !revealedAnswer && (
             <Badge
               variant="outline"
@@ -310,11 +377,12 @@ function PlayerRow({
         </div>
         <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
           <div
-            className="h-full bg-primary"
+            className="h-full bg-primary transition-all duration-700"
             style={{ width: `${(player.money / 1000000) * 100}%` }}
           />
         </div>
       </div>
+
       <div className="text-right pl-6">
         <MoneyDisplay
           amount={player.money}

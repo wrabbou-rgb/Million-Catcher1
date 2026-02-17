@@ -6,16 +6,18 @@ import { Button } from "@/components/ui/button";
 import { OptionCard } from "@/components/OptionCard";
 import { MoneyDisplay } from "@/components/MoneyDisplay";
 import { motion } from "framer-motion";
-import { Loader2, Lock, Trophy, Skull } from "lucide-react";
+import { Loader2, Lock, Trophy, Skull, WifiOff } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useToast } from "@/hooks/use-toast";
 
 export default function PlayerGame() {
   const [, params] = useRoute("/play/:code");
   const roomCode = params?.code || "";
-  const { gameState, socketId, updateBet, confirmBet } = useGameSocket();
+  const { gameState, socketId, updateBet, confirmBet, joinRoom } =
+    useGameSocket();
   const { toast } = useToast();
   const [localBet, setLocalBet] = useState<Record<string, number>>({});
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const me = gameState?.players.find(
     (p: any) => p.socketId === socketId || p.id === socketId,
@@ -27,6 +29,26 @@ export default function PlayerGame() {
       : null);
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
+
+  // ✅ Reconexión automática: si tenemos roomCode y nombre guardado pero no estamos en la lista
+  useEffect(() => {
+    if (!roomCode || !socketId || me) return;
+
+    const savedName = sessionStorage.getItem(`player_name_${roomCode}`);
+    if (savedName && gameState) {
+      // Estamos en la partida pero no nos encuentran → reconectarse
+      setIsReconnecting(true);
+      joinRoom(roomCode, savedName);
+      setTimeout(() => setIsReconnecting(false), 3000);
+    }
+  }, [socketId, gameState, me, roomCode]);
+
+  // ✅ Guardar nombre cuando nos unimos correctamente
+  useEffect(() => {
+    if (me?.name && roomCode) {
+      sessionStorage.setItem(`player_name_${roomCode}`, me.name);
+    }
+  }, [me?.name, roomCode]);
 
   useEffect(() => {
     setLocalBet({});
@@ -55,6 +77,20 @@ export default function PlayerGame() {
       })();
     }
   }, [gameState?.status, me?.status]);
+
+  // Reconectando...
+  if (isReconnecting || (!me && gameState)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center flex-col gap-4">
+        <WifiOff className="w-12 h-12 text-yellow-500 mb-2" />
+        <p className="text-white font-bold text-xl">Reconnectant...</p>
+        <p className="text-muted-foreground text-sm">
+          Tornant a connectar amb la sala
+        </p>
+        <Loader2 className="w-8 h-8 animate-spin text-primary mt-2" />
+      </div>
+    );
+  }
 
   if (!gameState || !me) {
     return (
@@ -113,6 +149,7 @@ export default function PlayerGame() {
       sorted.findIndex(
         (p: any) => p.socketId === socketId || p.id === socketId,
       ) + 1;
+    const medals = ["🥇", "🥈", "🥉"];
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
         <Watermark />
@@ -139,10 +176,8 @@ export default function PlayerGame() {
               className="text-primary text-glow"
             />
           </div>
-          {/* Podio top 3 */}
           <div className="flex items-end justify-center gap-3">
             {sorted.slice(0, 3).map((p: any, i: number) => {
-              const medals = ["🥇", "🥈", "🥉"];
               const heights = ["h-24", "h-16", "h-12"];
               return (
                 <motion.div
@@ -231,7 +266,6 @@ export default function PlayerGame() {
   };
 
   return (
-    // ✅ FIX SCROLL: overflow-y-auto + pb-32 para que C y D no queden cortados
     <div className="min-h-screen flex flex-col bg-background p-4 pb-32 md:p-6 md:pb-32 relative overflow-y-auto">
       <Watermark />
 
