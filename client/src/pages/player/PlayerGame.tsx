@@ -15,7 +15,6 @@ export default function PlayerGame() {
   const roomCode = params?.code || "";
   const { gameState, socketId, updateBet, confirmBet } = useGameSocket();
   const { toast } = useToast();
-
   const [localBet, setLocalBet] = useState<Record<string, number>>({});
 
   const me = gameState?.players.find(
@@ -26,7 +25,6 @@ export default function PlayerGame() {
     (gameState?.questions
       ? gameState.questions[gameState.currentQuestionIndex]
       : null);
-
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
 
@@ -108,17 +106,31 @@ export default function PlayerGame() {
   }
 
   if (gameState.status === "finished") {
+    const sorted = [...(gameState.players || [])].sort(
+      (a, b) => b.money - a.money,
+    );
+    const myRank =
+      sorted.findIndex(
+        (p: any) => p.socketId === socketId || p.id === socketId,
+      ) + 1;
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
         <Watermark />
         <div className="absolute inset-0 bg-primary/5 z-0" />
-        <div className="relative z-10">
-          <Trophy className="w-32 h-32 text-yellow-500 mb-8 mx-auto drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]" />
-          <h1 className="text-5xl md:text-7xl font-black mb-6">
-            {me.status === "winner" ? "ENHORABONA!" : "PARTIDA FINALITZADA"}
+        <div className="relative z-10 w-full max-w-md">
+          <Trophy className="w-24 h-24 text-yellow-500 mb-4 mx-auto drop-shadow-[0_0_30px_rgba(234,179,8,0.5)]" />
+          <h1 className="text-4xl md:text-6xl font-black mb-2">
+            {myRank === 1
+              ? "🥇 GUANYADOR!"
+              : myRank === 2
+                ? "🥈 Segon lloc!"
+                : myRank === 3
+                  ? "🥉 Tercer lloc!"
+                  : "PARTIDA FINALITZADA"}
           </h1>
-          <div className="bg-card/50 backdrop-blur-xl border border-primary/20 p-8 rounded-3xl shadow-2xl">
-            <p className="text-lg text-muted-foreground mb-2">
+          <p className="text-white/50 mb-6">Posició #{myRank}</p>
+          <div className="bg-card/50 backdrop-blur-xl border border-primary/20 p-6 rounded-3xl shadow-2xl mb-8">
+            <p className="text-sm text-muted-foreground mb-1">
               Has aconseguit endur-te
             </p>
             <MoneyDisplay
@@ -127,12 +139,35 @@ export default function PlayerGame() {
               className="text-primary text-glow"
             />
           </div>
+          {/* Podio top 3 */}
+          <div className="flex items-end justify-center gap-3">
+            {sorted.slice(0, 3).map((p: any, i: number) => {
+              const medals = ["🥇", "🥈", "🥉"];
+              const heights = ["h-24", "h-16", "h-12"];
+              return (
+                <motion.div
+                  key={p.id}
+                  initial={{ opacity: 0, y: 40 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: i * 0.2 }}
+                  className={`flex flex-col items-center bg-white/5 border border-white/10 rounded-xl p-3 flex-1 ${heights[i]}`}
+                >
+                  <span className="text-xl">{medals[i]}</span>
+                  <span className="text-xs font-bold truncate w-full text-center">
+                    {p.name}
+                  </span>
+                  <span className="text-xs text-primary">
+                    {new Intl.NumberFormat().format(p.money)}€
+                  </span>
+                </motion.div>
+              );
+            })}
+          </div>
         </div>
       </div>
     );
   }
 
-  // Sin pregunta todavía (entre preguntas o esperando inicio)
   if (!currentQuestion) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
@@ -196,7 +231,8 @@ export default function PlayerGame() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background p-4 pb-24 md:p-6 relative">
+    // ✅ FIX SCROLL: overflow-y-auto + pb-32 para que C y D no queden cortados
+    <div className="min-h-screen flex flex-col bg-background p-4 pb-32 md:p-6 md:pb-32 relative overflow-y-auto">
       <Watermark />
 
       <div className="flex justify-between items-start mb-6">
@@ -242,13 +278,13 @@ export default function PlayerGame() {
       )}
 
       <div className="flex-1 flex flex-col max-w-4xl mx-auto w-full">
-        <div className="bg-white/5 rounded-2xl p-6 mb-8 border border-white/10 min-h-[120px] flex items-center justify-center text-center shadow-lg">
-          <h2 className="text-2xl md:text-3xl font-medium leading-relaxed">
+        <div className="bg-white/5 rounded-2xl p-6 mb-6 border border-white/10 min-h-[100px] flex items-center justify-center text-center shadow-lg">
+          <h2 className="text-xl md:text-2xl font-medium leading-relaxed">
             {currentQuestion.text}
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {currentQuestion.options.map((opt: any) => {
             const optionKey = opt.letter ?? opt.id;
             return (

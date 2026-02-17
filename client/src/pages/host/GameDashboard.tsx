@@ -6,7 +6,7 @@ import { MoneyDisplay } from "@/components/MoneyDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Eye, ArrowRight } from "lucide-react";
+import { Eye, ArrowRight, Trophy } from "lucide-react";
 import clsx from "clsx";
 
 export default function GameDashboard() {
@@ -15,9 +15,7 @@ export default function GameDashboard() {
   const { gameState, revealResult, nextQuestion } = useGameSocket();
 
   const sortedPlayers = [...(gameState?.players || [])].sort((a, b) => {
-    if (a.status !== b.status) {
-      return a.status === "active" ? -1 : 1;
-    }
+    if (a.status !== b.status) return a.status === "active" ? -1 : 1;
     return b.money - a.money;
   });
 
@@ -25,10 +23,100 @@ export default function GameDashboard() {
   const eliminatedPlayers = sortedPlayers.filter(
     (p) => p.status === "eliminated",
   );
-
-  // La respuesta correcta revelada llega desde el STATE_UPDATE del servidor
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
+
+  // Pantalla de podio cuando termina la partida
+  if (gameState?.status === "finished") {
+    const top3 = sortedPlayers.slice(0, 3);
+    const medals = ["🥇", "🥈", "🥉"];
+    const podiumOrder = [1, 0, 2]; // visual: 2º izq, 1º centro, 3º derecha
+    const heights = ["h-40", "h-52", "h-32"];
+
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative overflow-hidden">
+        <Watermark />
+        <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/5 to-transparent z-0" />
+        <div className="relative z-10 w-full max-w-3xl text-center">
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ type: "spring", delay: 0.2 }}
+          >
+            <Trophy className="w-24 h-24 text-yellow-500 mx-auto mb-6 drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]" />
+          </motion.div>
+          <motion.h1
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4 }}
+            className="text-6xl font-black mb-12 bg-gradient-to-r from-yellow-400 to-primary bg-clip-text text-transparent"
+          >
+            CLASSIFICACIÓ FINAL
+          </motion.h1>
+
+          {/* Podio visual */}
+          <div className="flex items-end justify-center gap-4 mb-12">
+            {podiumOrder.map((playerIdx, visualIdx) => {
+              const player = top3[playerIdx];
+              if (!player) return null;
+              const podiumHeights = ["h-40", "h-52", "h-32"];
+              return (
+                <motion.div
+                  key={player.id}
+                  initial={{ opacity: 0, y: 60 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 + visualIdx * 0.2, type: "spring" }}
+                  className={`flex flex-col items-center justify-end ${podiumHeights[visualIdx]} flex-1 rounded-t-2xl border border-white/10 p-4
+                    ${
+                      playerIdx === 0
+                        ? "bg-yellow-500/20 border-yellow-500/30"
+                        : playerIdx === 1
+                          ? "bg-white/10 border-white/20"
+                          : "bg-orange-700/20 border-orange-700/30"
+                    }`}
+                >
+                  <span className="text-3xl mb-2">{medals[playerIdx]}</span>
+                  <span className="font-black text-lg text-white truncate w-full text-center">
+                    {player.name}
+                  </span>
+                  <span className="text-primary font-bold text-sm">
+                    {new Intl.NumberFormat().format(player.money)}€
+                  </span>
+                </motion.div>
+              );
+            })}
+          </div>
+
+          {/* Lista completa */}
+          <div className="space-y-2">
+            {sortedPlayers.map((player, idx) => (
+              <motion.div
+                key={player.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 1.2 + idx * 0.05 }}
+                className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-white/30 font-black w-8">
+                    #{idx + 1}
+                  </span>
+                  <span className="font-bold">
+                    {idx < 3 ? medals[idx] : ""} {player.name}
+                  </span>
+                </div>
+                <MoneyDisplay
+                  amount={player.money}
+                  size="sm"
+                  className="text-primary"
+                />
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background p-6 flex flex-col overflow-hidden">
@@ -36,21 +124,22 @@ export default function GameDashboard() {
 
       {/* Top Bar */}
       <div className="flex items-center justify-between mb-8 bg-card/50 backdrop-blur-md p-6 rounded-2xl border border-white/10">
-        {/* Pregunta actual */}
         <div>
           <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
             Pregunta Actual
           </h2>
           <div className="text-3xl font-bold text-white flex items-center gap-3">
+            {/* ✅ FIX: +1 porque el índice empieza en 0 */}
             <span className="text-primary">
-              {gameState?.questionIndex || 1}
+              {(gameState?.currentQuestionIndex ?? 0) + 1}
             </span>
             <span className="text-white/30">/</span>
-            <span>{gameState?.totalQuestions || 8}</span>
+            <span>
+              {gameState?.totalQuestions ?? gameState?.questions?.length ?? 8}
+            </span>
           </div>
         </div>
 
-        {/* Título + Botones de control del host */}
         <div className="text-center flex flex-col items-center gap-4">
           <h1 className="text-4xl font-black bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
             CLASSIFICACIÓ EN DIRECTE
@@ -76,7 +165,6 @@ export default function GameDashboard() {
           </div>
         </div>
 
-        {/* Jugadors actius */}
         <div className="text-right">
           <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
             Jugadors Actius
@@ -90,7 +178,6 @@ export default function GameDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 overflow-hidden">
-        {/* Lista principal: jugadores activos */}
         <div className="lg:col-span-2 overflow-y-auto pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 gap-4">
             <AnimatePresence>
@@ -103,7 +190,6 @@ export default function GameDashboard() {
                 />
               ))}
             </AnimatePresence>
-
             {activePlayers.length === 0 && (
               <div className="p-12 text-center text-muted-foreground border-2 border-dashed border-white/10 rounded-2xl">
                 Tots els jugadors han estat eliminats.
@@ -112,9 +198,7 @@ export default function GameDashboard() {
           </div>
         </div>
 
-        {/* Sidebar */}
         <div className="space-y-6 flex flex-col">
-          {/* Resposta correcta revelada */}
           <Card className="bg-card/50 border-white/10 p-6">
             <h3 className="text-lg font-bold mb-4 text-white">
               Resposta Correcta
@@ -132,7 +216,6 @@ export default function GameDashboard() {
             )}
           </Card>
 
-          {/* Eliminados */}
           <Card className="bg-card/50 border-white/10 p-6 flex-1 overflow-hidden flex flex-col">
             <h3 className="text-lg font-bold mb-4 text-red-500 flex items-center gap-2">
               <span>Eliminats</span>
@@ -168,8 +251,6 @@ function PlayerRow({
   revealedAnswer: string | null;
 }) {
   const isConfirmed = player.hasConfirmed;
-
-  // Si ya se reveló la respuesta, mostramos si el jugador acertó o no
   const playerBet = (player as any).currentBet || {};
   const betOnCorrect = revealedAnswer ? playerBet[revealedAnswer] || 0 : 0;
   const didWin = revealedAnswer ? betOnCorrect > 0 : null;
@@ -199,7 +280,6 @@ function PlayerRow({
       <div className="w-12 h-12 flex items-center justify-center font-black text-2xl text-white/20 mr-4">
         #{rank}
       </div>
-
       <div className="flex-1">
         <div className="flex items-center gap-3 mb-1">
           <span className="font-bold text-lg">{player.name}</span>
@@ -235,7 +315,6 @@ function PlayerRow({
           />
         </div>
       </div>
-
       <div className="text-right pl-6">
         <MoneyDisplay
           amount={player.money}
