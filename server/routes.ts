@@ -55,71 +55,53 @@ export async function registerRoutes(
   io.on("connection", (socket) => {
     console.log("New connection:", socket.id);
 
+    // --- 1. CREAR SALA (Recibe el maxPlayers del Host) ---
     socket.on(WS_EVENTS.CREATE_ROOM, async (payload) => {
       try {
         const code = generateRoomCode();
+        // Guardamos el límite real en la base de datos
         const game = await storage.createGame(
           payload.hostName,
-          payload.maxPlayers,
+          payload.maxPlayers || 20,
           code,
         );
         socket.join(game.id.toString());
-        socket.emit(WS_EVENTS.ROOM_CREATED, {
+
+        const initialState = {
           roomCode: code,
           hostName: payload.hostName,
-          maxPlayers: payload.maxPlayers,
+          maxPlayers: payload.maxPlayers || 20,
           players: [],
           status: "waiting",
           currentQuestionIndex: 0,
-        });
-        console.log(`Room created: ${code} by ${payload.hostName}`);
+        };
+
+        socket.emit(WS_EVENTS.STATE_UPDATE, initialState);
+        console.log(
+          `Sala creada: ${code} con límite de ${payload.maxPlayers} jugadores`,
+        );
       } catch (err) {
-        console.error("Error creating room:", err);
+        console.error("Error al crear sala:", err);
         socket.emit(WS_EVENTS.ERROR, { message: "Error al crear la sala" });
       }
     });
 
+    // --- 2. UNIR-SE A LA SALA (Verifica el límite de jugadores) ---
     socket.on(WS_EVENTS.JOIN_ROOM, async (payload) => {
       try {
         const { roomCode, playerName } = payload;
-
-        if (!roomCode || !playerName) {
-          socket.emit(WS_EVENTS.ERROR, {
-            message: "Nom i codi de sala obligatoris.",
-          });
-          return;
-        }
-
         const game = await storage.getGameByCode(roomCode.toUpperCase().trim());
 
         if (!game) {
-          socket.emit(WS_EVENTS.ERROR, {
-            message: "Codi incorrecte. Torna-ho a intentar.",
-          });
+          socket.emit(WS_EVENTS.ERROR, { message: "Codi incorrecte." });
           return;
         }
 
+        // VALIDACIÓN DE LÍMITE:
         const existingPlayers = await storage.getPlayersInGame(game.id);
-
-        if (
-          existingPlayers.some(
-            (p) => p.name.toLowerCase() === playerName.toLowerCase().trim(),
-          )
-        ) {
-          socket.emit(WS_EVENTS.ERROR, {
-            message: "Aquest nom ja està en ús. Tria un altre nom.",
-          });
-          return;
-        }
-
         if (existingPlayers.length >= game.maxPlayers) {
-          socket.emit(WS_EVENTS.ERROR, { message: "La sala està plena." });
-          return;
-        }
-
-        if (game.state !== "waiting") {
           socket.emit(WS_EVENTS.ERROR, {
-            message: "La partida ja ha començat.",
+            message: "La sala està plena. Límite alcanzado.",
           });
           return;
         }
@@ -149,33 +131,22 @@ export async function registerRoutes(
             questionIndex: mem ? mem.questionIndex : 0,
             money: mem ? mem.money : p.money,
             status: mem ? mem.status : p.status,
+            socketId: p.socketId,
           };
         });
 
-        const gameState = {
+        io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, {
           roomCode: game.code,
-          hostName: game.hostName,
-          maxPlayers: game.maxPlayers,
           players: enrichedPlayers,
           status: game.state,
           currentQuestionIndex: game.currentQuestionIndex,
-        };
-
-        io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, gameState);
-        socket.emit("game_joined", {
-          gameState,
-          player: { ...player, questionIndex: 0, money: 1000000 },
         });
-
-        console.log(`Player ${playerName} joined room ${roomCode}`);
       } catch (err) {
-        console.error("Error joining room:", err);
-        socket.emit(WS_EVENTS.ERROR, {
-          message: "Error al unir-se a la sala.",
-        });
+        console.error("Error al unirse:", err);
       }
     });
 
+    // --- 3. COMENÇAR EL JOC ---
     socket.on(WS_EVENTS.START_GAME, async (payload) => {
       try {
         const { roomCode } = payload;
@@ -183,83 +154,69 @@ export async function registerRoutes(
 
         if (game) {
           await storage.updateGameState(game.id, "playing");
-          const players = await storage.getPlayersInGame(game.id);
-          const enrichedPlayers = players.map((p) => {
-            const mem = findInMap(socketMap, p.id);
-            return {
-              ...p,
-              questionIndex: mem ? mem.questionIndex : 0,
-              money: mem ? mem.money : p.money,
-              status: mem ? mem.status : p.status,
-            };
-          });
-
-          const gameState = {
-            roomCode: game.code,
-            hostName: game.hostName,
-            maxPlayers: game.maxPlayers,
-            players: enrichedPlayers,
+          io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, {
             status: "playing",
             currentQuestionIndex: 0,
-          };
-
-          io.to(game.id.toString()).emit(WS_EVENTS.GAME_STARTED);
-          io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, gameState);
-          console.log(`Game started for room ${roomCode}`);
+          });
         }
       } catch (err) {
-        console.error("Error starting game:", err);
+        console.error("Error al empezar:", err);
       }
     });
 
-    socket.on(WS_EVENTS.SUBMIT_ANSWER, async (payload) => {
+    // --- 4. ACTUALIZACIÓN DE RANKING (Directo) ---
+    socket.on("PLAYER_NEXT", async (payload) => {
       try {
-        const { money, questionIndex, status } = payload;
-        const socketInfo = socketMap.get(socket.id);
+        const info = socketMap.get(socket.id);
+        if (info) {
+          info.money = payload.money;
+          info.questionIndex = payload.index;
+          info.status = payload.status;
 
-        if (!socketInfo) {
-          console.error("Socket not found in map:", socket.id);
-          return;
+          await storage.updatePlayer(info.playerId, {
+            money: info.money,
+            status: info.status,
+          });
+
+          // Re-enviamos la lista a todos para que el ranking se mueva
+          const playersInRoom = Array.from(socketMap.values())
+            .filter((p) => p.gameId === info.gameId)
+            .map((p) => ({
+              ...p,
+              socketId: Array.from(socketMap.keys()).find(
+                (k) => socketMap.get(k) === p,
+              ),
+            }));
+
+          io.to(info.gameId.toString()).emit(WS_EVENTS.STATE_UPDATE, {
+            players: playersInRoom,
+          });
         }
-
-        const { gameId, playerId } = socketInfo;
-        const newStatus = status || (money === 0 ? "eliminated" : "active");
-
-        socketMap.set(socket.id, {
-          ...socketInfo,
-          money,
-          questionIndex,
-          status: newStatus,
-        });
-
-        await storage.updatePlayer(playerId, {
-          money,
-          status: newStatus,
-          lastAnswer: payload.distribution || {},
-        });
-
-        io.to(gameId.toString()).emit(WS_EVENTS.PLAYER_UPDATE, {
-          socketId: socket.id,
-          money,
-          questionIndex,
-          status: newStatus,
-          name: socketInfo.name,
-        });
-
-        console.log(
-          `Player ${socketInfo.name}: money=${money}, q=${questionIndex}, status=${newStatus}`,
-        );
       } catch (err) {
-        console.error("Error submitting answer:", err);
+        console.error(err);
+      }
+    });
+
+    // --- 5. AVANCE GLOBAL (Botón del Host) ---
+    socket.on("NEXT_QUESTION_GLOBAL", async () => {
+      try {
+        const info = Array.from(socketMap.values()).find((i) =>
+          socket.rooms.has(i.gameId.toString()),
+        );
+        if (info) {
+          // Avanzamos el índice en el estado global de la sala
+          io.to(info.gameId.toString()).emit(WS_EVENTS.STATE_UPDATE, {
+            currentQuestionIndex: info.questionIndex + 1,
+            status: "playing",
+          });
+        }
+      } catch (err) {
+        console.error("Error en avance global:", err);
       }
     });
 
     socket.on("disconnect", () => {
-      const info = socketMap.get(socket.id);
-      if (info) {
-        console.log(`Player disconnected: ${info.name}`);
-        socketMap.delete(socket.id);
-      }
+      socketMap.delete(socket.id);
     });
   });
 

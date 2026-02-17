@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { useHostGame } from "@/hooks/use-game";
 import { NeonButton } from "@/components/NeonButton";
 import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, ArrowRight, Users, Star, Timer } from "lucide-react"; // Ahora sí los usamos todos
+import { Trophy, ArrowRight, Users, Star, Timer } from "lucide-react";
 
 const formatMoney = (amount: number | undefined | null) => {
   const safe = typeof amount === "number" && !isNaN(amount) ? amount : 0;
@@ -17,7 +18,9 @@ const formatMoney = (amount: number | undefined | null) => {
 export default function Host() {
   const { gameState, createRoom, startGame, nextQuestionGlobal, isCreating } =
     useHostGame();
+  const [numPlayers, setNumPlayers] = useState(20); // Estado para el límite de jugadores
 
+  // Si no hay gameState, mostramos la pantalla de crear sala
   if (!gameState) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#0a0a0b] p-6">
@@ -25,12 +28,38 @@ export default function Host() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <Card className="w-full max-w-md p-8 bg-black/40 border-white/10 backdrop-blur-xl">
-            <h1 className="text-4xl font-black text-primary text-center mb-8 italic uppercase">
+          <Card className="w-full max-w-md p-8 bg-black/40 border-white/10 backdrop-blur-xl text-center">
+            <h1 className="text-4xl font-black text-primary mb-8 italic uppercase">
               Atrapa un Milió
             </h1>
+
+            <div className="mb-6">
+              <p className="text-slate-400 text-sm uppercase tracking-widest mb-3 font-mono">
+                Límit de jugadors
+              </p>
+              <div className="flex items-center justify-center gap-4">
+                <button
+                  onClick={() => setNumPlayers((prev) => Math.max(1, prev - 1))} // Mínimo 1 jugador
+                  className="w-10 h-10 rounded-full border border-white/20 hover:bg-white/10 text-white text-2xl font-bold"
+                >
+                  -
+                </button>
+                <span className="text-4xl font-black text-white w-16">
+                  {numPlayers}
+                </span>
+                <button
+                  onClick={() =>
+                    setNumPlayers((prev) => Math.min(100, prev + 1))
+                  } // Máximo 100 jugadores (ajustable)
+                  className="w-10 h-10 rounded-full border border-white/20 hover:bg-white/10 text-white text-2xl font-bold"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
             <NeonButton
-              onClick={() => createRoom("Host", 30)}
+              onClick={() => createRoom("Host", numPlayers)} // Envía el número de jugadores seleccionado
               isLoading={isCreating}
               className="w-full h-16 text-xl"
             >
@@ -42,6 +71,7 @@ export default function Host() {
     );
   }
 
+  // Si el estado es "waiting", mostramos el código de sala
   if (gameState.status === "waiting") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-[#0a0a0b] p-6 text-center">
@@ -67,6 +97,7 @@ export default function Host() {
         <NeonButton
           onClick={startGame}
           className="px-16 py-8 text-2xl shadow-2xl"
+          disabled={gameState.players.length === 0}
         >
           COMENÇAR EL JOC
         </NeonButton>
@@ -74,11 +105,12 @@ export default function Host() {
     );
   }
 
-  // Ordenamos por dinero para la posición dinámica
-  const sortedPlayers = [...gameState.players].sort(
+  // Ordenamos los jugadores por dinero para el rànquing en directo
+  const sortedPlayers = [...(gameState.players || [])].sort(
     (a, b) => b.money - a.money,
   );
 
+  // Pantalla principal del juego (ranking y control)
   return (
     <div className="min-h-screen bg-[#0a0a0b] p-8">
       <div className="max-w-6xl mx-auto space-y-8">
@@ -118,7 +150,7 @@ export default function Host() {
           <AnimatePresence mode="popLayout">
             {sortedPlayers.map((player, index) => (
               <motion.div
-                key={player.socketId}
+                key={player.socketId || player.id} // Usar socketId o id para la key
                 layout
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -167,6 +199,7 @@ export default function Host() {
           <NeonButton
             onClick={nextQuestionGlobal}
             className="w-full h-20 text-2xl group shadow-2xl"
+            disabled={gameState.status !== "playing"} // Deshabilitar si el juego no ha empezado
           >
             AVANÇAR PREGUNTA{" "}
             <ArrowRight className="ml-3 group-hover:translate-x-2 transition-transform" />
