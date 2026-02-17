@@ -8,24 +8,23 @@ interface MoneyDisplayProps {
   animate?: boolean;
 }
 
-export function MoneyDisplay({ amount, size = "md", className = "", animate = true }: MoneyDisplayProps) {
+export function MoneyDisplay({
+  amount,
+  size = "md",
+  className = "",
+  animate = true,
+}: MoneyDisplayProps) {
   const [displayAmount, setDisplayAmount] = useState(amount);
 
   useEffect(() => {
-    if (animate) {
-      // Simple lerp animation for numbers could go here, 
-      // but for now strictly reacting to props
-      setDisplayAmount(amount);
-    } else {
-      setDisplayAmount(amount);
-    }
+    setDisplayAmount(amount);
   }, [amount, animate]);
 
   const formatMoney = (val: number) => {
     return new Intl.NumberFormat("ca-ES", {
       style: "currency",
       currency: "EUR",
-      maximumFractionDigits: 0
+      maximumFractionDigits: 0,
     }).format(val);
   };
 
@@ -33,7 +32,7 @@ export function MoneyDisplay({ amount, size = "md", className = "", animate = tr
     sm: "text-lg font-bold",
     md: "text-2xl font-bold",
     lg: "text-4xl font-extrabold tracking-tight",
-    xl: "text-6xl font-black tracking-tighter"
+    xl: "text-6xl font-black tracking-tighter",
   };
 
   return (
@@ -41,9 +40,9 @@ export function MoneyDisplay({ amount, size = "md", className = "", animate = tr
       <AnimatePresence mode="popLayout">
         <motion.span
           key={displayAmount}
-          initial={animate ? { y: 10, opacity: 0 } : false}
+          initial={animate ? { y: 10, opacity: 0 } : undefined}
           animate={{ y: 0, opacity: 1 }}
-          exit={animate ? { y: -10, opacity: 0 } : false}
+          exit={animate ? { y: -10, opacity: 0 } : undefined}
           transition={{ type: "spring", stiffness: 300, damping: 30 }}
         >
           {formatMoney(displayAmount)}
