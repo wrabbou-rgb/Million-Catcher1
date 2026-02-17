@@ -9,13 +9,10 @@ export function useHostGame() {
 
   useEffect(() => {
     if (!socket) socket = io();
-
     socket.on("STATE_UPDATE", (state) => {
-      console.log("NUEVO ESTADO:", state);
       setGameState(state);
-      setIsCreating(false); // <--- Esto desbloquea el botón
+      setIsCreating(false);
     });
-
     return () => {
       socket.off("STATE_UPDATE");
     };
@@ -23,8 +20,6 @@ export function useHostGame() {
 
   const createRoom = (hostName: string, maxPlayers: number) => {
     setIsCreating(true);
-    // Si en 3 segundos no hay respuesta, desbloqueamos por fuerza bruta
-    setTimeout(() => setIsCreating(false), 3000);
     socket.emit("CREATE_ROOM", { hostName, maxPlayers });
   };
 
@@ -32,7 +27,11 @@ export function useHostGame() {
     if (gameState) socket.emit("START_GAME", { roomCode: gameState.roomCode });
   };
 
-  return { gameState, createRoom, startGame, isCreating };
+  const nextQuestionGlobal = () => {
+    socket.emit("NEXT_QUESTION_GLOBAL");
+  };
+
+  return { gameState, createRoom, startGame, nextQuestionGlobal, isCreating };
 }
 
 export function usePlayerGame() {
@@ -59,5 +58,14 @@ export function usePlayerGame() {
     socket.emit("JOIN_ROOM", { roomCode, playerName });
   };
 
-  return { gameState, myPlayer, joinRoom, isJoining };
+  // Estas dos funciones son las que te faltaban según el error rojo
+  const confirmBet = () => {
+    socket.emit("PLAYER_CONFIRM");
+  };
+
+  const nextQuestion = (money: number, index: number, status: string) => {
+    socket.emit("PLAYER_NEXT", { money, index, status });
+  };
+
+  return { gameState, myPlayer, joinRoom, confirmBet, nextQuestion, isJoining };
 }
