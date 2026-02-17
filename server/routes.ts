@@ -5,16 +5,34 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { WS_EVENTS } from "@shared/schema";
 
+type SocketInfo = {
+  gameId: number;
+  playerId: number;
+  questionIndex: number;
+  money: number;
+  status: string;
+  name: string;
+};
+
+function findInMap(
+  map: Map<string, SocketInfo>,
+  playerId: number,
+): SocketInfo | undefined {
+  let result: SocketInfo | undefined;
+  map.forEach((val) => {
+    if (val.playerId === playerId) result = val;
+  });
+  return result;
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express,
 ): Promise<Server> {
-  // Basic health check
-  app.get(api.health.check.path, (req, res) => {
+  app.get(api.health.check.path, (_req, res) => {
     res.json({ status: "ok" });
   });
 
-  // Setup Socket.IO Server
   const io = new SocketIOServer(httpServer, {
     path: "/socket.io",
     cors: {
@@ -32,12 +50,11 @@ export async function registerRoutes(
     return code;
   };
 
-  // Map to track which game and player each socket belongs to
-  // socketId -> { gameId, playerId }
-  const socketMap = new Map<string, { gameId: number; playerId: number }>();
+  const socketMap = new Map<string, SocketInfo>();
 
   io.on("connection", (socket) => {
-    // Handle host creation
+    console.log("New connection:", socket.id);
+
     socket.on(WS_EVENTS.CREATE_ROOM, async (payload) => {
       try {
         const code = generateRoomCode();
@@ -46,9 +63,7 @@ export async function registerRoutes(
           payload.maxPlayers,
           code,
         );
-
         socket.join(game.id.toString());
-
         socket.emit(WS_EVENTS.ROOM_CREATED, {
           roomCode: code,
           hostName: payload.hostName,
@@ -57,16 +72,25 @@ export async function registerRoutes(
           status: "waiting",
           currentQuestionIndex: 0,
         });
+        console.log(`Room created: ${code} by ${payload.hostName}`);
       } catch (err) {
+        console.error("Error creating room:", err);
         socket.emit(WS_EVENTS.ERROR, { message: "Error al crear la sala" });
       }
     });
 
-    // Handle player join
     socket.on(WS_EVENTS.JOIN_ROOM, async (payload) => {
       try {
         const { roomCode, playerName } = payload;
-        const game = await storage.getGameByCode(roomCode);
+
+        if (!roomCode || !playerName) {
+          socket.emit(WS_EVENTS.ERROR, {
+            message: "Nom i codi de sala obligatoris.",
+          });
+          return;
+        }
+
+        const game = await storage.getGameByCode(roomCode.toUpperCase().trim());
 
         if (!game) {
           socket.emit(WS_EVENTS.ERROR, {
@@ -75,10 +99,12 @@ export async function registerRoutes(
           return;
         }
 
-        const players = await storage.getPlayersInGame(game.id);
+        const existingPlayers = await storage.getPlayersInGame(game.id);
 
         if (
-          players.some((p) => p.name.toLowerCase() === playerName.toLowerCase())
+          existingPlayers.some(
+            (p) => p.name.toLowerCase() === playerName.toLowerCase().trim(),
+          )
         ) {
           socket.emit(WS_EVENTS.ERROR, {
             message: "Aquest nom ja està en ús. Tria un altre nom.",
@@ -86,7 +112,7 @@ export async function registerRoutes(
           return;
         }
 
-        if (players.length >= game.maxPlayers) {
+        if (existingPlayers.length >= game.maxPlayers) {
           socket.emit(WS_EVENTS.ERROR, { message: "La sala està plena." });
           return;
         }
@@ -98,39 +124,58 @@ export async function registerRoutes(
           return;
         }
 
-        const player = await storage.addPlayer(game.id, socket.id, playerName);
+        const player = await storage.addPlayer(
+          game.id,
+          socket.id,
+          playerName.trim(),
+        );
 
-        // Store mapping so we can find gameId and playerId from socketId later
-        socketMap.set(socket.id, { gameId: game.id, playerId: player.id });
+        socketMap.set(socket.id, {
+          gameId: game.id,
+          playerId: player.id,
+          questionIndex: 0,
+          money: 1000000,
+          status: "active",
+          name: playerName.trim(),
+        });
 
         socket.join(game.id.toString());
 
         const updatedPlayers = await storage.getPlayersInGame(game.id);
+        const enrichedPlayers = updatedPlayers.map((p) => {
+          const mem = findInMap(socketMap, p.id);
+          return {
+            ...p,
+            questionIndex: mem ? mem.questionIndex : 0,
+            money: mem ? mem.money : p.money,
+            status: mem ? mem.status : p.status,
+          };
+        });
+
         const gameState = {
           roomCode: game.code,
           hostName: game.hostName,
           maxPlayers: game.maxPlayers,
-          players: updatedPlayers,
+          players: enrichedPlayers,
           status: game.state,
           currentQuestionIndex: game.currentQuestionIndex,
         };
 
-        // Notify everyone in the room (host sees new player)
         io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, gameState);
-
-        // Send confirmation to the player who just joined
         socket.emit("game_joined", {
           gameState,
-          player,
+          player: { ...player, questionIndex: 0, money: 1000000 },
         });
+
+        console.log(`Player ${playerName} joined room ${roomCode}`);
       } catch (err) {
+        console.error("Error joining room:", err);
         socket.emit(WS_EVENTS.ERROR, {
           message: "Error al unir-se a la sala.",
         });
       }
     });
 
-    // Handle game start
     socket.on(WS_EVENTS.START_GAME, async (payload) => {
       try {
         const { roomCode } = payload;
@@ -138,64 +183,83 @@ export async function registerRoutes(
 
         if (game) {
           await storage.updateGameState(game.id, "playing");
-
           const players = await storage.getPlayersInGame(game.id);
+          const enrichedPlayers = players.map((p) => {
+            const mem = findInMap(socketMap, p.id);
+            return {
+              ...p,
+              questionIndex: mem ? mem.questionIndex : 0,
+              money: mem ? mem.money : p.money,
+              status: mem ? mem.status : p.status,
+            };
+          });
+
           const gameState = {
             roomCode: game.code,
             hostName: game.hostName,
             maxPlayers: game.maxPlayers,
-            players,
+            players: enrichedPlayers,
             status: "playing",
             currentQuestionIndex: 0,
           };
 
-          // First emit GAME_STARTED so players switch screens
           io.to(game.id.toString()).emit(WS_EVENTS.GAME_STARTED);
-
-          // Then send full state update
           io.to(game.id.toString()).emit(WS_EVENTS.STATE_UPDATE, gameState);
+          console.log(`Game started for room ${roomCode}`);
         }
       } catch (err) {
         console.error("Error starting game:", err);
       }
     });
 
-    // Handle submit answer - THIS IS THE KEY EVENT FOR REAL TIME HOST UPDATES
     socket.on(WS_EVENTS.SUBMIT_ANSWER, async (payload) => {
       try {
         const { money, questionIndex, status } = payload;
-
-        // Get gameId and playerId from our map using socket.id
         const socketInfo = socketMap.get(socket.id);
+
         if (!socketInfo) {
           console.error("Socket not found in map:", socket.id);
           return;
         }
 
         const { gameId, playerId } = socketInfo;
+        const newStatus = status || (money === 0 ? "eliminated" : "active");
 
-        // Update player in database
+        socketMap.set(socket.id, {
+          ...socketInfo,
+          money,
+          questionIndex,
+          status: newStatus,
+        });
+
         await storage.updatePlayer(playerId, {
           money,
-          status: status || (money === 0 ? "eliminated" : "active"),
+          status: newStatus,
           lastAnswer: payload.distribution || {},
         });
 
-        // Broadcast PLAYER_UPDATE to everyone in the room (host sees this)
         io.to(gameId.toString()).emit(WS_EVENTS.PLAYER_UPDATE, {
           socketId: socket.id,
           money,
           questionIndex,
-          status: status || (money === 0 ? "eliminated" : "active"),
+          status: newStatus,
+          name: socketInfo.name,
         });
+
+        console.log(
+          `Player ${socketInfo.name}: money=${money}, q=${questionIndex}, status=${newStatus}`,
+        );
       } catch (err) {
         console.error("Error submitting answer:", err);
       }
     });
 
-    // Handle disconnect - clean up the map
     socket.on("disconnect", () => {
-      socketMap.delete(socket.id);
+      const info = socketMap.get(socket.id);
+      if (info) {
+        console.log(`Player disconnected: ${info.name}`);
+        socketMap.delete(socket.id);
+      }
     });
   });
 

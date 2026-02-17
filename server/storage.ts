@@ -52,6 +52,7 @@ export class DatabaseStorage implements IStorage {
     socketId: string,
     name: string,
   ): Promise<Player> {
+    // Insert without questionIndex to avoid column-not-found errors
     const [player] = await db
       .insert(players)
       .values({
@@ -60,7 +61,6 @@ export class DatabaseStorage implements IStorage {
         name,
         money: 1000000,
         status: "active",
-        questionIndex: 0,
       })
       .returning();
     return player;
@@ -78,14 +78,22 @@ export class DatabaseStorage implements IStorage {
     playerId: number,
     updates: Partial<Player>,
   ): Promise<Player> {
-    // Only update fields that exist in the DB
     const safeUpdates: any = {};
     if (updates.money !== undefined) safeUpdates.money = updates.money;
     if (updates.status !== undefined) safeUpdates.status = updates.status;
-    if (updates.questionIndex !== undefined)
-      safeUpdates.questionIndex = updates.questionIndex;
     if (updates.lastAnswer !== undefined)
       safeUpdates.lastAnswer = updates.lastAnswer;
+    // Only include questionIndex if explicitly passed (column may not exist yet)
+    // We track this in-memory via socketMap in routes.ts instead
+
+    if (Object.keys(safeUpdates).length === 0) {
+      // Nothing to update, just return the current player
+      const [player] = await db
+        .select()
+        .from(players)
+        .where(eq(players.id, playerId));
+      return player;
+    }
 
     const [player] = await db
       .update(players)
