@@ -1,0 +1,202 @@
+Borra todo lo que has hecho y crea desde cero un juego web multijugador llamado "Atrapa un Millón" sobre el Motor de Cicle Otto. Sigue estas instrucciones AL PIE DE LA LETRA:
+
+=== IDIOMA ===
+TODO el contenido debe estar en CATALAN. Nunca usar castellano ni inglés en la interfaz. Botones, mensajes, errores, títulos: todo en catalán.
+
+=== TECNOLOGIAS ===
+- Backend: Node.js + Express + Socket.IO
+- Frontend: HTML5 + CSS3 + JavaScript vanilla
+- Dos archivos de interfaz: index.html (jugadores) y host.html (host)
+- Comunicación en tiempo real con Socket.IO
+
+=== FORMATO DEL DINERO ===
+SIEMPRE mostrar el número completo. NUNCA abreviar.
+CORRECTO: "1.000.000 €" / "650.000 €" / "125.000 €"
+INCORRECTO: "1M €" / "650k €" / "125k €"
+Aplicar en TODAS las pantallas sin excepción.
+
+=== CODIGO DE JUEGO ===
+- Al crear la sala, generar un código ALEATORIO de 6 caracteres mayúsculas (ejemplo: XYZ789)
+- Este código aparece en GRANDE en la interfaz del host
+- Los jugadores introducen este código para unirse a la partida
+
+=== PANTALLA HOST - CREAR SALA ===
+El host tiene una pantalla de inicio con:
+- Input: "El teu nom"
+- Input: "Codi de la sala" (generado automáticamente, visible y copiable)
+- Input: "Nombre màxim de jugadors" (número entre 2 y 30)
+- Botón: "CREAR SALA"
+
+Una vez creada la sala mostrar:
+- El código de sala en GRANDE y visible
+- Contador de jugadores conectados (ejemplo: "5/10 jugadors")
+- Botón "COMENÇAR JOC"
+- Cuando se alcance el límite elegido, bloquear nuevas conexiones automáticamente
+
+=== BLOQUEO DE PARTIDA ===
+- Si alguien intenta unirse cuando se alcanzó el límite: mostrar "La sala està plena"
+- Si intenta unirse cuando la partida ya empezó: mostrar "La partida ja ha començat"
+- Una vez pulsado "COMENÇAR JOC" no se permite unirse a nadie más
+
+=== LOGICA GENERAL - MUY IMPORTANTE ===
+- Cada jugador juega DE FORMA COMPLETAMENTE INDEPENDIENTE en su propia pantalla
+- El host NO controla el ritmo del juego
+- El host NO muestra respuestas
+- El host NO pasa preguntas
+- Cada jugador puede estar en una pregunta diferente al mismo tiempo
+- TODO sucede en la pantalla del jugador: ver la pregunta, distribuir el dinero, confirmar, revelar resultado
+- El host SOLO observa en tiempo real lo que hace cada jugador
+
+=== MECANICA DEL DINERO ===
+- Cada jugador empieza con 1.000.000 € INDIVIDUAL
+- En cada pregunta debe distribuir TODO su dinero actual entre las opciones
+- REGLA OBLIGATORIA: Al menos UNA opción debe quedar en 0 €
+- Si NO hay dinero en la respuesta correcta: ELIMINADO (balance = 0 €)
+- Si SÍ hay dinero en la correcta: nuevo balance = solo lo apostado en esa opción
+- Ejemplo: Tienes 1.000.000 €, apuestas 600.000 € en la correcta, siguiente pregunta empiezas con 600.000 €
+- La clasificación final se ordena por dinero final de mayor a menor
+- NO hay ningún balance global ni "total en joc", solo balances individuales
+
+=== SISTEMA DE DISTRIBUCION DE DINERO ===
+Cada opción tiene:
+- Botón "-" que resta 50.000 € al contador de esa opción
+- Contador que muestra el dinero asignado (empieza en 0 €)
+- Botón "+" que suma 50.000 € al contador de esa opción
+
+Encima de todas las opciones mostrar: "DINERS DISPONIBLES: X €" que se reduce en tiempo real mientras asignas dinero.
+
+Reglas de los botones:
+- El botón "+" se desactiva si no hay dinero disponible
+- El botón "-" se desactiva si la opción está en 0 €
+- El contador cambia de color: gris si tiene 0 €, verde si tiene dinero asignado
+
+=== ESTRUCTURA DE PREGUNTAS ===
+Total: 8 preguntas
+- Preguntas 1, 2 y 3: 4 opciones, máximo 3 pueden tener dinero (1 debe quedar en 0 €)
+- Preguntas 4, 5, 6 y 7: 3 opciones, máximo 2 pueden tener dinero (1 debe quedar en 0 €)
+- Pregunta 8 FINAL: 2 opciones, todo o nada, todo el dinero en UNA sola opción
+
+=== PANTALLA JUGADOR DURANTE EL JUEGO ===
+Parte superior:
+- Número de pregunta (ejemplo: "Pregunta 3 de 8")
+- Balance actual del jugador en formato completo
+
+Recuadro pequeño y discreto con normas que cambia según la pregunta:
+- Preguntas 1 a 3: "Tens 4 opcions. Reparteix els diners en un maxim de 3 respostes. Una ha de quedar buida."
+- Preguntas 4 a 7: "Tens 3 opcions. Reparteix els diners en un maxim de 2 respostes. Una ha de quedar buida."
+- Pregunta 8: "FINAL: 2 opcions. Tot o res. Has de posar tots els diners en UNA sola opcio."
+
+La pregunta en grande y clara.
+
+Cada opción muestra:
+- La letra (A, B, C o D)
+- EL TEXTO COMPLETO de la opción (OBLIGATORIO, nunca solo la letra)
+- Botón "-" a la izquierda, contador de dinero en el centro, botón "+" a la derecha
+
+=== BOTON CONFIRMAR Y REVELAR ===
+El botón empieza como "CONFIRMAR RESPOSTA" desactivado y en color gris.
+
+Se activa SOLO cuando se cumplen estas DOS condiciones al mismo tiempo:
+1. Todo el dinero está distribuido (DINERS DISPONIBLES = 0 €)
+2. Al menos UNA opción tiene 0 €
+
+Al hacer click en el botón activado:
+- El botón cambia su texto a "REVELAR RESULTAT"
+- Las opciones se bloquean, ya no se puede cambiar el dinero
+
+Al hacer click en "REVELAR RESULTAT":
+- Animación de suspense llamativa de 2 a 3 segundos (cuenta atrás o efecto visual)
+- La opción correcta se ilumina en VERDE con animación
+- Las opciones incorrectas se oscurecen en ROJO
+- Si tenía dinero en la correcta: mostrar "CORRECTE! Nou balance: X €"
+- Si no tenía dinero en la correcta: mostrar "ELIMINAT! Balance final: 0 €"
+- Después aparece botón "SEGUENT PREGUNTA"
+
+=== PANEL HOST DURANTE EL JUEGO ===
+El host SOLO puede ver estas dos secciones, nada más:
+
+Sección 1 - "JUGADORS EN DIRECTE":
+- Para cada jugador: nombre + pregunta actual (ejemplo: "3/8") + balance individual + estado
+- Estado puede ser: "Actiu" en verde, "Eliminat" en rojo, o "Guanyador" en dorado
+- Todo actualizado en tiempo real automáticamente
+
+Sección 2 - "CLASSIFICACIO EN DIRECTE":
+- Ranking ordenado por balance individual de mayor a menor
+- Medallas para los 3 primeros: primer lugar, segundo lugar, tercer lugar
+- Actualización automática cada vez que alguien responde
+
+El host NO tiene botones para controlar el juego.
+El host NO muestra balance global.
+El host NO pasa preguntas.
+
+=== PODIO FINAL ===
+Cuando TODOS los jugadores hayan terminado (eliminados o completadas las 8 preguntas):
+- Mostrar podio automáticamente en el host Y en las pantallas de todos los jugadores
+- Primer lugar: nombre + balance final
+- Segundo lugar: nombre + balance final
+- Tercer lugar: nombre + balance final
+- Animación de celebración con confeti
+
+=== PREGUNTAS DEL JUEGO ===
+
+Pregunta 1 - 4 opciones - correcta es la A:
+Texto: "Quin any va inventar Nikolaus August Otto el primer motor de quatre temps amb compressio?"
+A) 1876 (esta es la correcta)
+B) 1878
+C) 1880
+D) 1885
+
+Pregunta 2 - 4 opciones - correcta es la B:
+Texto: "Quin es el component que transforma el moviment rectilini del pisto en moviment rotatiu?"
+A) La biela
+B) El cigonyal (esta es la correcta)
+C) El volant d'inercia
+D) L'arbre de lleves
+
+Pregunta 3 - 4 opciones - correcta es la B:
+Texto: "En quin ordre es produeixen les fases del motor de 4 temps?"
+A) Compressio, admissio, explosio, escapament
+B) Admissio, compressio, explosio, escapament (esta es la correcta)
+C) Explosio, compressio, admissio, escapament
+D) Admissio, explosio, compressio, escapament
+
+Pregunta 4 - 3 opciones - correcta es la C:
+Texto: "Quina temperatura pot superar la combustio dins del cilindre?"
+A) 500 graus C
+B) 1.000 graus C
+C) 2.000 graus C (esta es la correcta)
+
+Pregunta 5 - 3 opciones - correcta es la B:
+Texto: "Que es el carter en un motor Otto?"
+A) La peca que tanca els cilindres per dalt
+B) El diposit d'oli a la part inferior del motor (esta es la correcta)
+C) L'element que uneix el pisto amb el cigonyal
+
+Pregunta 6 - 3 opciones - correcta es la B:
+Texto: "Segons el Segon Principi de la Termodinamica aplicat al motor:"
+A) Tota la calor es converteix en treball util
+B) Part de l'energia s'ha de cedir a un focus fred (esta es la correcta)
+C) No es pot generar energia mecanica des de calor
+
+Pregunta 7 - 3 opciones - correcta es la B:
+Texto: "Quina diferencia principal te el motor de 2 temps respecte al de 4 temps?"
+A) Te valvules mes complexes
+B) Completa el cicle en una volta de cigonyal (esta es la correcta)
+C) Es menys contaminant
+
+Pregunta 8 - 2 opciones - correcta es la A - TOT O RES:
+Texto: "Quina es la temperatura de treball optima d'un motor Otto?"
+A) 90 graus C (esta es la correcta)
+B) 150 graus C
+
+=== DISENO ===
+- Estilo moderno tipo Kahoot
+- Gradientes de colores vivos
+- Animaciones suaves
+- Responsive para movil, tablet y ordenador
+- Fondo oscuro con colores vibrantes
+
+=== WATERMARK ===
+En la parte inferior derecha de TODAS las pantallas (host y jugadores):
+Texto: "Developed by Walid Rabbou"
+Estilo: pequeño, discreto, opacidad 0.6
