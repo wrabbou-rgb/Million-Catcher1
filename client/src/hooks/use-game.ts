@@ -1,13 +1,12 @@
-import { useState, useEffect } from "react"; // He quitado useCallback para limpiar el error amarillo
+import { useState, useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 
-// Añadimos questionTimer aquí para arreglar el error de TypeScript
 export interface GameState {
   roomCode: string;
   status: "waiting" | "playing" | "finished";
   players: any[];
   currentQuestionIndex: number;
-  questionTimer?: number; // <-- Esto soluciona image_3d861d.png
+  questionTimer?: number;
 }
 
 let socket: Socket;
@@ -18,35 +17,51 @@ export function useHostGame() {
 
   useEffect(() => {
     if (!socket) socket = io();
-    socket.on("STATE_UPDATE", (state: GameState) => setGameState(state));
+
+    // Escuchamos la actualización del estado
+    socket.on("STATE_UPDATE", (state: GameState) => {
+      console.log("Estado recibido en Host:", state);
+      setGameState(state);
+      setIsCreating(false); // <--- IMPORTANTE: Detenemos el buffering aquí
+    });
+
     return () => {
       socket.off("STATE_UPDATE");
     };
   }, []);
 
-  const createRoom = (hostName: string, time: number) => {
+  // Cambiamos "time" por "maxPlayers" para que coincida con el servidor
+  const createRoom = (hostName: string, maxPlayers: number) => {
     setIsCreating(true);
-    socket.emit("CREATE_ROOM", { hostName, questionTime: time });
+    console.log("Enviando CREATE_ROOM...", { hostName, maxPlayers });
+    socket.emit("CREATE_ROOM", { hostName, maxPlayers });
   };
 
-  const startGame = () => socket.emit("START_GAME");
+  const startGame = () => {
+    if (gameState) {
+      socket.emit("START_GAME", { roomCode: gameState.roomCode });
+    }
+  };
 
   const nextQuestionGlobal = () => {
-    console.log("Emitiendo avance global...");
     socket.emit("NEXT_QUESTION_GLOBAL");
   };
 
   return { gameState, createRoom, startGame, nextQuestionGlobal, isCreating };
 }
 
-// ESTA EXPORTACIÓN ES LA QUE TE DABA EL ERROR ROJO
 export function usePlayerGame() {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [isJoining, setIsJoining] = useState(false);
 
   useEffect(() => {
     if (!socket) socket = io();
-    socket.on("STATE_UPDATE", (state: GameState) => setGameState(state));
+
+    socket.on("STATE_UPDATE", (state: GameState) => {
+      setGameState(state);
+      setIsJoining(false); // Detenemos buffering de join
+    });
+
     return () => {
       socket.off("STATE_UPDATE");
     };

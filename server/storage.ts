@@ -2,7 +2,6 @@ import { db } from "./db";
 import {
   games,
   players,
-  questions,
   type Game,
   type Player,
   type Question,
@@ -13,6 +12,7 @@ export interface IStorage {
   createGame(hostName: string, maxPlayers: number, code: string): Promise<Game>;
   getGameByCode(code: string): Promise<Game | undefined>;
   updateGameState(gameId: number, state: string): Promise<void>;
+  updateGameQuestion(gameId: number, index: number): Promise<void>; // Añadida para evitar errores
   addPlayer(gameId: number, socketId: string, name: string): Promise<Player>;
   getPlayerBySocketId(socketId: string): Promise<Player | undefined>;
   updatePlayer(playerId: number, updates: Partial<Player>): Promise<Player>;
@@ -26,6 +26,7 @@ export class DatabaseStorage implements IStorage {
     maxPlayers: number,
     code: string,
   ): Promise<Game> {
+    // Corregido: Ahora incluimos currentQuestionIndex: 0 para que la DB no falle
     const [game] = await db
       .insert(games)
       .values({
@@ -33,6 +34,7 @@ export class DatabaseStorage implements IStorage {
         maxPlayers,
         code,
         state: "waiting",
+        currentQuestionIndex: 0,
       })
       .returning();
     return game;
@@ -47,12 +49,19 @@ export class DatabaseStorage implements IStorage {
     await db.update(games).set({ state }).where(eq(games.id, gameId));
   }
 
+  // Nueva función para que el Host avance de pregunta en la DB
+  async updateGameQuestion(gameId: number, index: number): Promise<void> {
+    await db
+      .update(games)
+      .set({ currentQuestionIndex: index })
+      .where(eq(games.id, gameId));
+  }
+
   async addPlayer(
     gameId: number,
     socketId: string,
     name: string,
   ): Promise<Player> {
-    // Insert without questionIndex to avoid column-not-found errors
     const [player] = await db
       .insert(players)
       .values({
@@ -83,11 +92,8 @@ export class DatabaseStorage implements IStorage {
     if (updates.status !== undefined) safeUpdates.status = updates.status;
     if (updates.lastAnswer !== undefined)
       safeUpdates.lastAnswer = updates.lastAnswer;
-    // Only include questionIndex if explicitly passed (column may not exist yet)
-    // We track this in-memory via socketMap in routes.ts instead
 
     if (Object.keys(safeUpdates).length === 0) {
-      // Nothing to update, just return the current player
       const [player] = await db
         .select()
         .from(players)
