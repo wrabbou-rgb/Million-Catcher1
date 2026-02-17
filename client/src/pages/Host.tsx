@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useHostGame } from "@/hooks/use-game";
 import { NeonButton } from "@/components/NeonButton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
-import { Users, Trophy, PlayCircle } from "lucide-react";
+import { Users, Trophy, PlayCircle, ArrowRight, Timer } from "lucide-react";
 
 const formatMoney = (amount: number) => {
   return new Intl.NumberFormat("ca-ES", {
@@ -17,11 +17,12 @@ const formatMoney = (amount: number) => {
 };
 
 export default function Host() {
+  // Asegúrate de que useHostGame devuelva 'updateGameState' o similar para cambiar la pregunta global
   const { gameState, createRoom, startGame, isCreating } = useHostGame();
   const [hostName, setHostName] = useState("");
   const [maxPlayers, setMaxPlayers] = useState(10);
 
-  // === 1. Create Room Screen ===
+  // === 1. Pantalla de Creación ===
   if (!gameState) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
@@ -60,10 +61,6 @@ export default function Host() {
                   onChange={(e) => setMaxPlayers(parseInt(e.target.value))}
                   className="w-full accent-primary h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer"
                 />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>2</span>
-                  <span>30</span>
-                </div>
               </div>
               <NeonButton
                 onClick={() => createRoom(hostName, maxPlayers)}
@@ -71,24 +68,21 @@ export default function Host() {
                 isLoading={isCreating}
                 className="w-full"
               >
-                CREAR SALA
+                {" "}
+                CREAR SALA{" "}
               </NeonButton>
             </div>
           </Card>
         </motion.div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
-        </div>
       </div>
     );
   }
 
-  // === 2. Lobby Screen ===
+  // === 2. Lobby (Esperando jugadores) ===
   if (gameState.status === "waiting") {
     return (
       <div className="min-h-screen p-6 flex flex-col items-center bg-background">
         <div className="w-full max-w-6xl space-y-12">
-          {/* Header */}
           <div className="text-center space-y-4">
             <h3 className="text-xl text-slate-400 font-mono uppercase tracking-widest">
               Codi de la Sala
@@ -103,8 +97,6 @@ export default function Host() {
               </span>
             </div>
           </div>
-
-          {/* Player Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
             <AnimatePresence>
               {gameState.players.map((player) => (
@@ -125,35 +117,21 @@ export default function Host() {
               ))}
             </AnimatePresence>
           </div>
-
-          {/* Start Button */}
           <div className="fixed bottom-10 left-0 right-0 flex justify-center">
             <NeonButton
               onClick={startGame}
               disabled={gameState.players.length < 1}
               className="text-2xl px-12 py-8"
             >
-              <PlayCircle className="w-8 h-8 mr-3" />
-              COMENÇAR JOC
+              <PlayCircle className="w-8 h-8 mr-3" /> COMENÇAR JOC
             </NeonButton>
           </div>
-        </div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
         </div>
       </div>
     );
   }
 
-  // === 3. Game Dashboard ===
-  const sortedPlayers = [...gameState.players].sort((a, b) => {
-    // Finished players go last
-    if (a.status === "eliminated" && b.status !== "eliminated") return 1;
-    if (a.status !== "eliminated" && b.status === "eliminated") return -1;
-    // Sort by money descending
-    return b.money - a.money;
-  });
-
+  // === 3. Panel de Control del Juego ===
   const activePlayers = gameState.players.filter(
     (p) => p.status === "active",
   ).length;
@@ -164,41 +142,8 @@ export default function Host() {
     (p) => p.status === "winner",
   ).length;
 
-  const getStatusStyle = (status: string, index: number) => {
-    if (status === "eliminated")
-      return "bg-red-900/20 border-red-900/40 opacity-60";
-    if (status === "winner") return "bg-yellow-500/20 border-yellow-500/50";
-    if (index === 0) return "bg-yellow-500/10 border-yellow-500/50";
-    return "bg-slate-800/50 border-white/5";
-  };
-
-  const getStatusText = (status: string) => {
-    if (status === "eliminated")
-      return { text: "ELIMINAT", color: "text-red-500" };
-    if (status === "winner")
-      return { text: "FINALITZAT", color: "text-yellow-400" };
-    return { text: "ACTIU", color: "text-green-500" };
-  };
-
-  const getPositionStyle = (index: number, status: string) => {
-    if (status === "eliminated") return "bg-red-900/50 text-red-300";
-    if (index === 0) return "bg-yellow-500 text-black";
-    if (index === 1) return "bg-slate-400 text-black";
-    if (index === 2) return "bg-amber-700 text-white";
-    return "bg-slate-700 text-white";
-  };
-
-  const getPositionEmoji = (index: number, status: string) => {
-    if (status === "eliminated") return "💀";
-    if (index === 0) return "🥇";
-    if (index === 1) return "🥈";
-    if (index === 2) return "🥉";
-    return index + 1;
-  };
-
   return (
     <div className="min-h-screen bg-background p-4 md:p-8 flex flex-col gap-6">
-      {/* Top Bar */}
       <header className="flex items-center justify-between bg-slate-900/80 border border-white/10 p-4 rounded-xl">
         <div className="flex items-center gap-4">
           <div className="bg-primary/20 p-2 rounded-lg">
@@ -206,12 +151,21 @@ export default function Host() {
               {gameState.roomCode}
             </span>
           </div>
-          <h1 className="text-2xl text-white font-bold hidden md:block">
-            PANELL DE CONTROL
+          <h1 className="text-2xl text-white font-bold">
+            PREGUNTA {gameState.currentQuestionIndex + 1} / 8
           </h1>
         </div>
+
+        {/* TEMPORIZADOR DEL HOST */}
+        <div className="flex items-center gap-3 bg-slate-800 px-4 py-2 rounded-lg border border-white/10">
+          <Timer className="text-primary w-5 h-5" />
+          <span className="text-white font-mono font-bold text-xl">
+            {(gameState as any).questionTimer || 0}s
+          </span>
+        </div>
+
         <div className="flex items-center gap-2 text-slate-400">
-          <span className="text-sm">Jugadors actius:</span>
+          <span className="text-sm">Vius:</span>
           <span className="text-green-400 font-bold text-xl">
             {activePlayers}
           </span>
@@ -223,7 +177,7 @@ export default function Host() {
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1">
-        {/* Leaderboard */}
+        {/* Leaderboard (Tu lógica de sortedPlayers aquí) */}
         <Card className="lg:col-span-2 bg-black/40 border-white/10 backdrop-blur-md p-6 overflow-hidden flex flex-col">
           <div className="flex items-center gap-3 mb-6">
             <Trophy className="w-8 h-8 text-yellow-500" />
@@ -231,127 +185,79 @@ export default function Host() {
               CLASSIFICACIÓ EN DIRECTE
             </h2>
           </div>
-
           <div className="space-y-3 overflow-y-auto pr-2 flex-1">
-            <AnimatePresence>
-              {sortedPlayers.map((player, index) => {
-                const statusInfo = getStatusText(player.status);
-                const questionIndex = (player as any).questionIndex || 0;
-
-                return (
-                  <motion.div
-                    key={player.socketId}
-                    layoutId={player.socketId}
-                    layout
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ layout: { duration: 0.4, type: "spring" } }}
-                    className={`flex items-center justify-between p-4 rounded-xl border ${getStatusStyle(player.status, index)}`}
-                  >
-                    <div className="flex items-center gap-4">
-                      {/* Position */}
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg ${getPositionStyle(index, player.status)}`}
-                      >
-                        {getPositionEmoji(index, player.status)}
-                      </div>
-
-                      {/* Player Info */}
-                      <div>
-                        <div className="font-bold text-lg text-white">
-                          {player.name}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`text-xs uppercase tracking-wider font-mono ${statusInfo.color}`}
-                          >
-                            {statusInfo.text}
-                          </span>
-                          {player.status !== "eliminated" && (
-                            <>
-                              <span className="text-slate-600">·</span>
-                              <span className="text-xs text-slate-400 font-mono">
-                                Pregunta {questionIndex + 1}/8
-                              </span>
-                            </>
-                          )}
-                        </div>
-                      </div>
+            {gameState.players.map((player, index) => (
+              <div
+                key={player.socketId}
+                className="flex items-center justify-between p-4 rounded-xl border border-white/5 bg-slate-800/50"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center text-white font-bold">
+                    {index + 1}
+                  </div>
+                  <div>
+                    <div className="font-bold text-white">{player.name}</div>
+                    <div
+                      className={`text-xs ${player.status === "active" ? "text-green-500" : "text-red-500"}`}
+                    >
+                      {player.status.toUpperCase()}
                     </div>
-
-                    {/* Money */}
-                    <div className="text-right">
-                      <div
-                        className={`text-xl font-bold font-mono ${
-                          player.status === "eliminated"
-                            ? "text-red-400"
-                            : player.status === "winner"
-                              ? "text-yellow-400"
-                              : index === 0
-                                ? "text-yellow-300"
-                                : "text-green-400"
-                        }`}
-                      >
-                        {formatMoney(player.money)}
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-yellow-400">
+                    {formatMoney(player.money)}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </Card>
 
-        {/* Stats Panel */}
+        {/* Panel de Sincronización */}
         <div className="space-y-6">
           <Card className="bg-slate-900/50 border-white/10 p-6">
-            <h3 className="text-lg text-slate-400 mb-4 uppercase tracking-widest">
-              Estat de la Sala
+            <h3 className="text-lg text-slate-400 mb-4 uppercase tracking-widest text-center italic">
+              CONTROL DE SINCRONITZACIÓ
             </h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-slate-800/50 p-4 rounded-lg text-center">
-                <div className="text-3xl font-bold text-white">
-                  {gameState.players.length}
-                </div>
-                <div className="text-xs text-slate-500 uppercase">Total</div>
+
+            <div className="space-y-4">
+              <div className="p-4 bg-blue-900/20 border border-blue-500/30 rounded-xl text-center">
+                <p className="text-blue-200 text-sm mb-4">
+                  Prem per avançar a tots els jugadors a la següent pregunta
+                  simultàniament.
+                </p>
+                {/* Aquí deberías llamar a una función del hook que haga: 
+                  socket.emit("update-game-state", { currentQuestionIndex: nextIndex })
+                */}
+                <NeonButton className="w-full h-16 text-lg" variant="primary">
+                  AVANÇAR PREGUNTA <ArrowRight className="ml-2" />
+                </NeonButton>
               </div>
-              <div className="bg-green-900/20 p-4 rounded-lg text-center border border-green-900/30">
-                <div className="text-3xl font-bold text-green-400">
-                  {activePlayers}
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-slate-800/50 p-4 rounded-lg text-center">
+                  <div className="text-3xl font-bold text-white">
+                    {activePlayers}
+                  </div>
+                  <div className="text-xs text-slate-500 uppercase">Actius</div>
                 </div>
-                <div className="text-xs text-green-600 uppercase">Vius</div>
-              </div>
-              <div className="bg-red-900/20 p-4 rounded-lg text-center border border-red-900/30">
-                <div className="text-3xl font-bold text-red-400">
-                  {eliminatedPlayers}
-                </div>
-                <div className="text-xs text-red-600 uppercase">Eliminats</div>
-              </div>
-              <div className="bg-yellow-900/20 p-4 rounded-lg text-center border border-yellow-900/30">
-                <div className="text-3xl font-bold text-yellow-400">
-                  {finishedPlayers}
-                </div>
-                <div className="text-xs text-yellow-600 uppercase">
-                  Finalitzats
+                <div className="bg-red-900/20 p-4 rounded-lg text-center border border-red-900/30">
+                  <div className="text-3xl font-bold text-red-400">
+                    {eliminatedPlayers}
+                  </div>
+                  <div className="text-xs text-red-600 uppercase">
+                    Eliminats
+                  </div>
                 </div>
               </div>
             </div>
           </Card>
-
-          <div className="bg-blue-900/20 border border-blue-500/30 p-6 rounded-xl">
-            <h3 className="text-blue-400 font-bold uppercase mb-2">
-              Vista del Presentador
-            </h3>
-            <p className="text-sm text-blue-200/70">
-              Els jugadors avancen al seu propi ritme de forma independent.
-              Només observa i comenta la jugada!
-            </p>
-          </div>
         </div>
       </div>
-
       <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-        Developed by Walid Rabbou
+        {" "}
+        Developed by Walid Rabbou{" "}
       </div>
     </div>
   );

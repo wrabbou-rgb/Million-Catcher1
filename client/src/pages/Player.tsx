@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Trapdoor } from "@/components/Trapdoor";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Loader2, XCircle } from "lucide-react";
+import { ArrowRight, Loader2, XCircle, Timer } from "lucide-react";
 // @ts-ignore
 import confetti from "canvas-confetti";
 
@@ -141,14 +141,6 @@ const formatMoney = (amount: number | undefined | null) => {
   }).format(safe);
 };
 
-const getRulesText = (questionIndex: number) => {
-  if (questionIndex < 3)
-    return "📋 Tens 4 opcions. Reparteix els diners en un màxim de 3 respostes. Una ha de quedar buida.";
-  if (questionIndex < 7)
-    return "📋 Tens 3 opcions. Reparteix els diners en un màxim de 2 respostes. Una ha de quedar buida.";
-  return "📋 FINAL: 2 opcions. Tot o res. Has de posar tots els diners en UNA sola opció.";
-};
-
 export default function Player() {
   const {
     gameState,
@@ -161,7 +153,6 @@ export default function Player() {
 
   const [roomCode, setRoomCode] = useState("");
   const [playerName, setPlayerName] = useState("");
-
   const [localQIndex, setLocalQIndex] = useState(0);
   const [localMoney, setLocalMoney] = useState(1000000);
   const [localDistribution, setLocalDistribution] = useState<
@@ -172,6 +163,7 @@ export default function Player() {
   const [isEliminated, setIsEliminated] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
   const currentQuestion = QUESTIONS[localQIndex];
   const distributedAmount = Object.values(localDistribution).reduce(
@@ -189,22 +181,53 @@ export default function Player() {
     optionsWithMoney > 0 &&
     optionsWithMoney < totalOptions;
 
-  // Sincronización con el estado global del juego para asegurar actualizaciones en vivo
+  // --- SINCRONIZACIÓN FORZADA CON EL HOST ---
   useEffect(() => {
-    if (gameState?.status === "playing") {
-      setLocalDistribution({});
-      setIsConfirmed(false);
-      setIsRevealed(false);
-      // Solo resetear si no estamos eliminados
-      if (localMoney > 0) {
-        setIsEliminated(false);
+    if (gameState) {
+      // Si el Host avanza la pregunta, nosotros también sincronizamos localmente
+      if (
+        gameState.currentQuestionIndex !== undefined &&
+        gameState.currentQuestionIndex !== localQIndex
+      ) {
+        setLocalQIndex(gameState.currentQuestionIndex);
+        setLocalDistribution({});
+        setIsConfirmed(false);
+        setIsRevealed(false);
+        setCountdown(null);
+        // Usamos cast 'as any' para evitar el error de TS en la captura
+        setTimeLeft((gameState as any).questionTimer || 30);
       }
-      setCountdown(null);
+
+      // Sincronización de balance real desde el servidor
+      if (
+        myPlayer &&
+        myPlayer.money !== undefined &&
+        myPlayer.money !== localMoney
+      ) {
+        setLocalMoney(myPlayer.money);
+        if (myPlayer.money <= 0) setIsEliminated(true);
+      }
     }
-  }, [localQIndex, gameState?.status]);
+  }, [gameState, myPlayer, localQIndex, localMoney]);
+
+  // --- LÓGICA DE CUENTA ATRÁS ---
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (
+      gameState?.status === "playing" &&
+      timeLeft !== null &&
+      timeLeft > 0 &&
+      !isConfirmed
+    ) {
+      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    } else if (timeLeft === 0 && !isConfirmed) {
+      handleConfirm(); // Auto-confirmación al agotar tiempo
+    }
+    return () => clearTimeout(timer);
+  }, [timeLeft, gameState?.status, isConfirmed]);
 
   const handleAddMoney = (optionId: string) => {
-    if (availableMoney <= 0 || isConfirmed) return;
+    if (availableMoney <= 0 || isConfirmed || timeLeft === 0) return;
     const step = 50000;
     const toAdd = Math.min(step, availableMoney);
     setLocalDistribution((prev) => ({
@@ -214,7 +237,7 @@ export default function Player() {
   };
 
   const handleRemoveMoney = (optionId: string) => {
-    if (isConfirmed) return;
+    if (isConfirmed || timeLeft === 0) return;
     const current = localDistribution[optionId] || 0;
     if (current <= 0) return;
     const step = 50000;
@@ -226,7 +249,6 @@ export default function Player() {
   };
 
   const handleConfirm = () => {
-    if (!isValid) return;
     setIsConfirmed(true);
     serverConfirm();
   };
@@ -239,18 +261,14 @@ export default function Player() {
           clearInterval(interval);
           setCountdown(null);
           setIsRevealed(true);
-
           const correctOption = currentQuestion.options.find(
             (o) => o.isCorrect,
           );
           const moneyOnCorrect =
             localDistribution[correctOption?.id || ""] || 0;
-
           if (moneyOnCorrect > 0) {
-            setLocalMoney(moneyOnCorrect);
             confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
           } else {
-            setLocalMoney(0);
             setIsEliminated(true);
             serverNext(0, localQIndex, "eliminated");
           }
@@ -267,121 +285,124 @@ export default function Player() {
       setIsFinished(true);
       serverNext(localMoney, QUESTIONS.length, "winner");
     } else {
-      // Notificamos al servidor el nuevo estado ANTES de cambiar el índice local
+      // Notificamos al servidor, la UI se actualizará vía el useEffect de sincronización
       serverNext(localMoney, nextQIndex, "active");
-      setLocalQIndex(nextQIndex);
     }
   };
 
-  // 1. Pantalla de Unión (Join)
-  if (!gameState) {
+  // --- RENDERIZADO DE PANTALLAS ---
+  if (!gameState)
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
+        {" "}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="w-full max-w-md"
         >
+          {" "}
           <Card className="p-8 bg-black/40 border-white/10 backdrop-blur-xl">
+            {" "}
             <h1 className="text-4xl text-center mb-2 text-primary font-bold">
               ATRAPA UN MILIÓ
-            </h1>
+            </h1>{" "}
             <p className="text-center text-slate-400 mb-8">
               Motor de Cicle Otto
-            </p>
+            </p>{" "}
             <div className="space-y-6">
+              {" "}
               <div className="space-y-2">
-                <Label className="text-slate-300">El teu nom</Label>
+                {" "}
+                <Label className="text-slate-300">El teu nom</Label>{" "}
                 <Input
                   value={playerName}
                   onChange={(e) => setPlayerName(e.target.value)}
                   className="bg-slate-900/50 border-slate-700 text-lg h-12"
                   placeholder="El teu nom..."
-                />
-              </div>
+                />{" "}
+              </div>{" "}
               <div className="space-y-2">
-                <Label className="text-slate-300">Codi de la Sala</Label>
+                {" "}
+                <Label className="text-slate-300">Codi de la Sala</Label>{" "}
                 <Input
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                   className="bg-slate-900/50 border-slate-700 text-lg h-12 font-mono uppercase tracking-widest text-center"
                   placeholder="XXXXXX"
                   maxLength={6}
-                />
-              </div>
+                />{" "}
+              </div>{" "}
               <NeonButton
                 onClick={() => joinRoom(roomCode, playerName)}
                 disabled={!roomCode || !playerName}
                 isLoading={isJoining}
                 className="w-full"
               >
-                UNIR-SE A LA PARTIDA
-              </NeonButton>
-            </div>
-          </Card>
-        </motion.div>
+                {" "}
+                UNIR-SE A LA PARTIDA{" "}
+              </NeonButton>{" "}
+            </div>{" "}
+          </Card>{" "}
+        </motion.div>{" "}
       </div>
     );
-  }
-
-  // 2. Pantalla de Espera (Waiting)
-  if (gameState.status === "waiting") {
+  if (gameState.status === "waiting")
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background space-y-8">
-        <Loader2 className="w-16 h-16 text-primary animate-spin" />
+        {" "}
+        <Loader2 className="w-16 h-16 text-primary animate-spin" />{" "}
         <div className="text-center space-y-4">
+          {" "}
           <h2 className="text-4xl text-white font-bold">
             PREPARAT, {myPlayer?.name?.toUpperCase()}!
-          </h2>
+          </h2>{" "}
           <p className="text-slate-400">
             Esperant que el presentador comenci la partida...
-          </p>
+          </p>{" "}
           <div className="text-3xl font-bold text-primary">
             {formatMoney(1000000)}
-          </div>
-        </div>
+          </div>{" "}
+        </div>{" "}
       </div>
     );
-  }
-
-  // 3. Pantalla de Fin de Juego (Winner)
-  if (isFinished) {
+  if (isFinished)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+        {" "}
         <div className="text-center space-y-6">
-          <div className="text-8xl">🏆</div>
-          <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>
+          {" "}
+          <div className="text-8xl">🏆</div>{" "}
+          <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>{" "}
           <div className="p-6 bg-slate-900 rounded-xl border border-yellow-400/30">
-            <p className="text-slate-400 text-sm mb-2">Premi final</p>
+            {" "}
+            <p className="text-slate-400 text-sm mb-2">Premi final</p>{" "}
             <p className="text-4xl font-bold text-yellow-400">
               {formatMoney(localMoney)}
-            </p>
-          </div>
-        </div>
+            </p>{" "}
+          </div>{" "}
+        </div>{" "}
       </div>
     );
-  }
-
-  // 4. Pantalla de Eliminado
-  if (isEliminated && isRevealed) {
+  if (isEliminated && isRevealed)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
+        {" "}
         <div className="text-center space-y-6">
-          <XCircle className="w-24 h-24 text-red-500 mx-auto" />
-          <h1 className="text-5xl font-black text-red-500">ELIMINAT!</h1>
+          {" "}
+          <XCircle className="w-24 h-24 text-red-500 mx-auto" />{" "}
+          <h1 className="text-5xl font-black text-red-500">ELIMINAT!</h1>{" "}
           <p className="text-white text-xl">
             No tenies diners en la resposta correcta.
-          </p>
-        </div>
+          </p>{" "}
+        </div>{" "}
       </div>
     );
-  }
-
-  // 5. Cuenta atrás para revelación
-  if (countdown !== null) {
+  if (countdown !== null)
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        {" "}
         <AnimatePresence mode="wait">
+          {" "}
           <motion.div
             key={countdown}
             initial={{ scale: 2, opacity: 0 }}
@@ -390,15 +411,18 @@ export default function Player() {
             transition={{ duration: 0.4 }}
             className="text-center"
           >
-            <div className="text-9xl font-black text-primary">{countdown}</div>
-            <p className="text-white text-2xl mt-4">Revelant la resposta...</p>
-          </motion.div>
-        </AnimatePresence>
+            {" "}
+            <div className="text-9xl font-black text-primary">
+              {countdown}
+            </div>{" "}
+            <p className="text-white text-2xl mt-4">
+              Revelant la resposta...
+            </p>{" "}
+          </motion.div>{" "}
+        </AnimatePresence>{" "}
       </div>
     );
-  }
 
-  // 6. Pantalla Principal de Juego (Playing)
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <header className="p-4 bg-slate-900 border-b border-white/10 flex justify-between items-center sticky top-0 z-50">
@@ -410,14 +434,23 @@ export default function Player() {
             {localQIndex + 1} / {QUESTIONS.length}
           </span>
         </div>
+
+        {/* RELOJ DE CUENTA ATRÁS */}
         <div className="flex flex-col items-center">
-          <span className="text-slate-400 text-xs uppercase tracking-widest">
-            Balance
-          </span>
-          <span className="text-yellow-400 font-bold text-lg">
-            {formatMoney(localMoney)}
-          </span>
+          <div
+            className={`flex items-center gap-2 px-4 py-1 rounded-full border transition-all ${timeLeft !== null && timeLeft <= 5 ? "bg-red-500/20 border-red-500 animate-pulse" : "bg-slate-800 border-slate-700"}`}
+          >
+            <Timer
+              className={`w-4 h-4 ${timeLeft !== null && timeLeft <= 5 ? "text-red-500" : "text-primary"}`}
+            />
+            <span
+              className={`font-mono font-bold text-xl ${timeLeft !== null && timeLeft <= 5 ? "text-red-500" : "text-white"}`}
+            >
+              {timeLeft ?? "--"}s
+            </span>
+          </div>
         </div>
+
         <div className="flex flex-col items-end">
           <span className="text-slate-400 text-xs uppercase tracking-widest">
             Disponible
@@ -431,10 +464,6 @@ export default function Player() {
       </header>
 
       <main className="flex-1 container mx-auto p-4 flex flex-col gap-4 max-w-4xl">
-        <div className="bg-slate-800/50 border border-white/5 rounded-full px-4 py-2 text-center">
-          <p className="text-xs text-slate-400">{getRulesText(localQIndex)}</p>
-        </div>
-
         <div className="py-4 text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
             {currentQuestion.text}
@@ -451,7 +480,7 @@ export default function Player() {
               maxAmount={localMoney}
               onAdd={() => handleAddMoney(option.id)}
               onRemove={() => handleRemoveMoney(option.id)}
-              disabled={isConfirmed}
+              disabled={isConfirmed || timeLeft === 0}
               result={
                 isRevealed ? (option.isCorrect ? "correct" : "incorrect") : null
               }
@@ -460,27 +489,26 @@ export default function Player() {
           ))}
         </div>
 
+        {/* BLOQUE DE RESULTADO */}
         {isRevealed && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`text-center p-4 rounded-xl border ${
-              !isEliminated
-                ? "bg-green-900/30 border-green-500/50 text-green-400"
-                : "bg-red-900/30 border-red-500/50 text-red-400"
-            }`}
+            className={`text-center p-4 rounded-xl border ${!isEliminated ? "bg-green-900/30 border-green-500/50 text-green-400" : "bg-red-900/30 border-red-500/50 text-red-400"}`}
           >
             {!isEliminated ? (
               <>
-                <p className="text-2xl font-bold">✅ CORRECTE!</p>
+                {" "}
+                <p className="text-2xl font-bold">✅ CORRECTE!</p>{" "}
                 <p className="text-lg">
                   Nou balance: {formatMoney(localMoney)}
-                </p>
+                </p>{" "}
               </>
             ) : (
               <>
-                <p className="text-2xl font-bold">❌ ELIMINAT!</p>
-                <p className="text-lg">Balance final: 0 €</p>
+                {" "}
+                <p className="text-2xl font-bold">❌ ELIMINAT!</p>{" "}
+                <p className="text-lg">Balance final: 0 €</p>{" "}
               </>
             )}
           </motion.div>
@@ -490,7 +518,7 @@ export default function Player() {
           {!isConfirmed ? (
             <NeonButton
               onClick={handleConfirm}
-              disabled={!isValid}
+              disabled={!isValid || timeLeft === 0}
               className="w-full max-w-sm text-xl h-16"
             >
               Confirmar Resposta
@@ -514,7 +542,8 @@ export default function Player() {
         </div>
       </main>
       <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-        Developed by Walid Rabbou
+        {" "}
+        Developed by Walid Rabbou{" "}
       </div>
     </div>
   );
