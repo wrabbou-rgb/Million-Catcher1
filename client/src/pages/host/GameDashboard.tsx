@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useRoute } from "wouter";
 import { useGameSocket, type Player } from "@/hooks/use-game-socket";
 import { Watermark } from "@/components/Watermark";
@@ -6,15 +5,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { MoneyDisplay } from "@/components/MoneyDisplay";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
+import { Button } from "@/components/ui/button";
+import { Eye, ArrowRight } from "lucide-react";
 import clsx from "clsx";
 
 export default function GameDashboard() {
   const [, params] = useRoute("/host/game/:code");
   const roomCode = params?.code || "";
-  const { gameState } = useGameSocket();
+  const { gameState, revealResult, nextQuestion } = useGameSocket();
 
-  // Sort players by money (descending) then by status (active first)
   const sortedPlayers = [...(gameState?.players || [])].sort((a, b) => {
     if (a.status !== b.status) {
       return a.status === "active" ? -1 : 1;
@@ -22,34 +21,66 @@ export default function GameDashboard() {
     return b.money - a.money;
   });
 
-  const activePlayers = sortedPlayers.filter(p => p.status === "active");
-  const eliminatedPlayers = sortedPlayers.filter(p => p.status === "eliminated");
-  
-  const currentQ = gameState?.currentQuestion;
+  const activePlayers = sortedPlayers.filter((p) => p.status === "active");
+  const eliminatedPlayers = sortedPlayers.filter(
+    (p) => p.status === "eliminated",
+  );
+
+  // La respuesta correcta revelada llega desde el STATE_UPDATE del servidor
+  const revealedAnswer: string | null =
+    (gameState as any)?.revealedAnswer ?? null;
 
   return (
     <div className="min-h-screen bg-background p-6 flex flex-col overflow-hidden">
       <Watermark />
-      
-      {/* Top Bar: Question Info & Stats */}
+
+      {/* Top Bar */}
       <div className="flex items-center justify-between mb-8 bg-card/50 backdrop-blur-md p-6 rounded-2xl border border-white/10">
+        {/* Pregunta actual */}
         <div>
-          <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">Pregunta Actual</h2>
+          <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
+            Pregunta Actual
+          </h2>
           <div className="text-3xl font-bold text-white flex items-center gap-3">
-            <span className="text-primary">{gameState?.questionIndex || 1}</span>
+            <span className="text-primary">
+              {gameState?.questionIndex || 1}
+            </span>
             <span className="text-white/30">/</span>
             <span>{gameState?.totalQuestions || 8}</span>
           </div>
         </div>
-        
-        <div className="text-center">
-             <h1 className="text-4xl font-black bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-               CLASSIFICACIÓ EN DIRECTE
-             </h1>
+
+        {/* Título + Botones de control del host */}
+        <div className="text-center flex flex-col items-center gap-4">
+          <h1 className="text-4xl font-black bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
+            CLASSIFICACIÓ EN DIRECTE
+          </h1>
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              className="border-primary text-primary hover:bg-primary/10"
+              onClick={() => revealResult(roomCode)}
+              disabled={!!revealedAnswer}
+            >
+              <Eye className="mr-2 w-4 h-4" />
+              {revealedAnswer ? "Resposta Revelada" : "Revelar Resposta"}
+            </Button>
+            <Button
+              className="bg-primary hover:bg-primary/80 font-bold"
+              onClick={() => nextQuestion(roomCode)}
+              disabled={!revealedAnswer}
+            >
+              Següent Pregunta
+              <ArrowRight className="ml-2 w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
+        {/* Jugadors actius */}
         <div className="text-right">
-          <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">Jugadors Actius</h2>
+          <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
+            Jugadors Actius
+          </h2>
           <div className="text-3xl font-bold text-white">
             <span className="text-green-500">{activePlayers.length}</span>
             <span className="text-white/30">/</span>
@@ -59,15 +90,20 @@ export default function GameDashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-1 overflow-hidden">
-        {/* Main List: Active Players */}
+        {/* Lista principal: jugadores activos */}
         <div className="lg:col-span-2 overflow-y-auto pr-2 custom-scrollbar">
           <div className="grid grid-cols-1 gap-4">
             <AnimatePresence>
               {activePlayers.map((player, index) => (
-                <PlayerRow key={player.id} player={player} rank={index + 1} />
+                <PlayerRow
+                  key={player.id}
+                  player={player}
+                  rank={index + 1}
+                  revealedAnswer={revealedAnswer}
+                />
               ))}
             </AnimatePresence>
-            
+
             {activePlayers.length === 0 && (
               <div className="p-12 text-center text-muted-foreground border-2 border-dashed border-white/10 rounded-2xl">
                 Tots els jugadors han estat eliminats.
@@ -76,27 +112,40 @@ export default function GameDashboard() {
           </div>
         </div>
 
-        {/* Sidebar: Question Status & Eliminated */}
+        {/* Sidebar */}
         <div className="space-y-6 flex flex-col">
-          {/* Current Question Status */}
+          {/* Resposta correcta revelada */}
           <Card className="bg-card/50 border-white/10 p-6">
-             <h3 className="text-lg font-bold mb-4 text-white">Distribució de Respostes</h3>
-             {/* This would ideally show an aggregate chart of where money is placed if the backend supported aggregation events easily. 
-                 For now, keeping it simple. */}
-             <div className="text-sm text-muted-foreground italic">
-                La informació de les respostes es revela al final de cada ronda.
-             </div>
+            <h3 className="text-lg font-bold mb-4 text-white">
+              Resposta Correcta
+            </h3>
+            {revealedAnswer ? (
+              <div className="flex items-center justify-center h-16 rounded-xl bg-green-500/20 border border-green-500/50">
+                <span className="text-4xl font-black text-green-400">
+                  {revealedAnswer}
+                </span>
+              </div>
+            ) : (
+              <div className="text-sm text-muted-foreground italic">
+                Prem "Revelar Resposta" per mostrar-la.
+              </div>
+            )}
           </Card>
 
-          {/* Eliminated Players List */}
+          {/* Eliminados */}
           <Card className="bg-card/50 border-white/10 p-6 flex-1 overflow-hidden flex flex-col">
             <h3 className="text-lg font-bold mb-4 text-red-500 flex items-center gap-2">
               <span>Eliminats</span>
-              <Badge variant="destructive" className="ml-auto">{eliminatedPlayers.length}</Badge>
+              <Badge variant="destructive" className="ml-auto">
+                {eliminatedPlayers.length}
+              </Badge>
             </h3>
             <div className="overflow-y-auto flex-1 space-y-2 pr-2">
               {eliminatedPlayers.map((player) => (
-                <div key={player.id} className="flex items-center justify-between p-3 bg-black/20 rounded-lg opacity-60 grayscale">
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between p-3 bg-black/20 rounded-lg opacity-60 grayscale"
+                >
                   <span className="font-medium">{player.name}</span>
                   <span className="text-xs text-muted-foreground">0 €</span>
                 </div>
@@ -109,10 +158,22 @@ export default function GameDashboard() {
   );
 }
 
-function PlayerRow({ player, rank }: { player: Player, rank: number }) {
-  // Determine status color/border
+function PlayerRow({
+  player,
+  rank,
+  revealedAnswer,
+}: {
+  player: Player;
+  rank: number;
+  revealedAnswer: string | null;
+}) {
   const isConfirmed = player.hasConfirmed;
-  
+
+  // Si ya se reveló la respuesta, mostramos si el jugador acertó o no
+  const playerBet = (player as any).currentBet || {};
+  const betOnCorrect = revealedAnswer ? playerBet[revealedAnswer] || 0 : 0;
+  const didWin = revealedAnswer ? betOnCorrect > 0 : null;
+
   return (
     <motion.div
       layout
@@ -122,36 +183,65 @@ function PlayerRow({ player, rank }: { player: Player, rank: number }) {
       className={clsx(
         "flex items-center p-4 rounded-xl border-l-4 shadow-lg transition-all",
         "bg-card border-y border-r border-white/5",
-        rank === 1 ? "border-l-yellow-500 bg-yellow-500/5" : 
-        rank === 2 ? "border-l-gray-400 bg-white/5" :
-        rank === 3 ? "border-l-orange-700 bg-orange-700/5" :
-        "border-l-primary"
+        revealedAnswer && didWin
+          ? "border-l-green-500 bg-green-500/10"
+          : revealedAnswer && !didWin
+            ? "border-l-red-500 bg-red-500/5"
+            : rank === 1
+              ? "border-l-yellow-500 bg-yellow-500/5"
+              : rank === 2
+                ? "border-l-gray-400 bg-white/5"
+                : rank === 3
+                  ? "border-l-orange-700 bg-orange-700/5"
+                  : "border-l-primary",
       )}
     >
       <div className="w-12 h-12 flex items-center justify-center font-black text-2xl text-white/20 mr-4">
         #{rank}
       </div>
-      
+
       <div className="flex-1">
         <div className="flex items-center gap-3 mb-1">
           <span className="font-bold text-lg">{player.name}</span>
-          {isConfirmed && (
-            <Badge variant="outline" className="bg-green-500/10 text-green-500 border-green-500/50 text-xs">
+          {isConfirmed && !revealedAnswer && (
+            <Badge
+              variant="outline"
+              className="bg-green-500/10 text-green-500 border-green-500/50 text-xs"
+            >
               Resposta Confirmada
+            </Badge>
+          )}
+          {revealedAnswer && didWin && (
+            <Badge
+              variant="outline"
+              className="bg-green-500/20 text-green-400 border-green-500/50 text-xs"
+            >
+              ✓ Encertat
+            </Badge>
+          )}
+          {revealedAnswer && !didWin && (
+            <Badge
+              variant="outline"
+              className="bg-red-500/20 text-red-400 border-red-500/50 text-xs"
+            >
+              ✗ Fallat
             </Badge>
           )}
         </div>
         <div className="w-full bg-white/5 h-1.5 rounded-full overflow-hidden">
-           {/* Visual progress bar of money relative to max possible (1M) */}
-           <div 
-             className="h-full bg-primary" 
-             style={{ width: `${(player.money / 1000000) * 100}%` }}
-           />
+          <div
+            className="h-full bg-primary"
+            style={{ width: `${(player.money / 1000000) * 100}%` }}
+          />
         </div>
       </div>
 
       <div className="text-right pl-6">
-        <MoneyDisplay amount={player.money} size="lg" className="text-primary" />
+        <MoneyDisplay
+          amount={player.money}
+          size="lg"
+          className="text-primary"
+        />
       </div>
     </motion.div>
   );

@@ -38,6 +38,8 @@ export const players = pgTable("players", {
   status: text("status").notNull().default("active"),
   questionIndex: integer("question_index").notNull().default(0),
   lastAnswer: jsonb("last_answer"),
+  currentBet: jsonb("current_bet").default({}), // ✅ NUEVO
+  hasConfirmed: boolean("has_confirmed").notNull().default(false), // ✅ NUEVO
 });
 
 // === SCHEMAS ===
@@ -46,15 +48,28 @@ export const insertGameSchema = createInsertSchema(games);
 export const insertPlayerSchema = createInsertSchema(players);
 
 // === TYPES ===
-export type Question = typeof questions.$inferSelect;
 export type Game = typeof games.$inferSelect;
 export type Player = typeof players.$inferSelect;
 
+// Question se define manualmente para soportar maxOptionsToBet y letter
 export type QuestionOption = {
   id: string;
+  letter: string; // ✅ NUEVO
   text: string;
   isCorrect: boolean;
 };
+
+export type Question = {
+  id: number;
+  order: number;
+  type: string;
+  text: string;
+  maxOptionsToBet: number; // ✅ NUEVO
+  options: QuestionOption[];
+};
+
+export type GameStatus = "waiting" | "playing" | "finished";
+export type PlayerStatus = "active" | "eliminated" | "winner";
 
 export type CreateGameRequest = {
   hostName: string;
@@ -69,21 +84,21 @@ export type JoinGameRequest = {
 // WebSocket Event Types (Shared)
 export const WS_EVENTS = {
   // Client -> Server
-  CREATE_ROOM: "create_room",
-  JOIN_ROOM: "join_room",
-  START_GAME: "start_game",
-  UPDATE_BET: "update_bet",
-  CONFIRM_BET: "confirm_bet",
-  NEXT_QUESTION: "next_question",
-  SUBMIT_ANSWER: "submit_answer",
-
+  CREATE_ROOM: "CREATE_ROOM",
+  JOIN_ROOM: "JOIN_ROOM",
+  START_GAME: "START_GAME",
+  UPDATE_BET: "UPDATE_BET",
+  CONFIRM_BET: "CONFIRM_BET",
+  NEXT_QUESTION: "NEXT_QUESTION",
+  SUBMIT_ANSWER: "SUBMIT_ANSWER",
+  REVEAL_RESULT: "REVEAL_RESULT", // ✅ NUEVO
   // Server -> Client
-  ROOM_CREATED: "room_created",
-  PLAYER_JOINED: "player_joined",
-  GAME_STARTED: "game_started",
-  STATE_UPDATE: "state_update",
-  PLAYER_UPDATE: "player_update",
-  ERROR: "error",
+  ROOM_CREATED: "ROOM_CREATED",
+  PLAYER_JOINED: "PLAYER_JOINED",
+  GAME_STARTED: "GAME_STARTED",
+  STATE_UPDATE: "STATE_UPDATE",
+  PLAYER_UPDATE: "PLAYER_UPDATE",
+  ERROR: "ERROR",
 } as const;
 
 export type MoneyDistribution = Record<string, number>;

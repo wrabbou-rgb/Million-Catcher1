@@ -1,7 +1,22 @@
 import { useEffect, useState, useCallback } from "react";
 import { socketClient } from "@/lib/socket";
-import { WS_EVENTS, type GameStatus, type PlayerStatus, type Question } from "@shared/schema";
+import {
+  WS_EVENTS,
+  type GameStatus,
+  type PlayerStatus,
+  type Question,
+} from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
+
+export interface Player {
+  id: string;
+  socketId: string;
+  name: string;
+  money: number;
+  status: PlayerStatus;
+  currentBet: Record<string, number>;
+  hasConfirmed: boolean;
+}
 
 export interface GameState {
   roomCode: string;
@@ -9,17 +24,11 @@ export interface GameState {
   players: Player[];
   status: GameStatus;
   currentQuestion?: Question;
+  currentQuestionIndex: number; // ✅ AÑADIDO
   questionIndex: number;
   totalQuestions: number;
-}
-
-export interface Player {
-  id: string;
-  name: string;
-  money: number;
-  status: PlayerStatus;
-  currentBet: Record<string, number>; // optionId -> amount
-  hasConfirmed: boolean;
+  questions?: Question[]; // ✅ AÑADIDO
+  revealedAnswer?: string | null; // ✅ AÑADIDO
 }
 
 export function useGameSocket() {
@@ -40,8 +49,12 @@ export function useGameSocket() {
       setIsConnected(false);
     }
 
-    function onStateUpdate(newState: GameState) {
-      setGameState(newState);
+    // ✅ Merge del estado: no reemplaza todo, solo actualiza los campos que llegan
+    function onStateUpdate(newState: Partial<GameState>) {
+      setGameState((prev) => {
+        if (!prev) return newState as GameState;
+        return { ...prev, ...newState };
+      });
     }
 
     function onError(error: { message: string }) {
@@ -52,20 +65,20 @@ export function useGameSocket() {
       });
     }
 
-    function onRoomCreated(data: { roomCode: string, state: GameState }) {
+    function onRoomCreated(data: { roomCode: string; state: GameState }) {
       setGameState(data.state);
       toast({
         title: "Sala creada!",
         description: `Codi de sala: ${data.roomCode}`,
       });
     }
-    
+
     function onGameStarted(state: GameState) {
-        setGameState(state);
-        toast({
-            title: "El joc ha començat!",
-            description: "Bona sort a tots els jugadors.",
-        });
+      setGameState(state);
+      toast({
+        title: "El joc ha començat!",
+        description: "Bona sort a tots els jugadors.",
+      });
     }
 
     socket?.on("connect", onConnect);
@@ -75,10 +88,7 @@ export function useGameSocket() {
     socket?.on(WS_EVENTS.ROOM_CREATED, onRoomCreated);
     socket?.on(WS_EVENTS.GAME_STARTED, onGameStarted);
 
-    // Initial connection check
-    if (socket?.connected) {
-      onConnect();
-    }
+    if (socket?.connected) onConnect();
 
     return () => {
       socket?.off("connect", onConnect);
@@ -102,20 +112,23 @@ export function useGameSocket() {
     socketClient.emit(WS_EVENTS.START_GAME, { roomCode });
   }, []);
 
-  const updateBet = useCallback((roomCode: string, bet: Record<string, number>) => {
-    socketClient.emit(WS_EVENTS.UPDATE_BET, { roomCode, bet });
-  }, []);
+  const updateBet = useCallback(
+    (roomCode: string, bet: Record<string, number>) => {
+      socketClient.emit(WS_EVENTS.UPDATE_BET, { roomCode, bet });
+    },
+    [],
+  );
 
   const confirmBet = useCallback((roomCode: string) => {
     socketClient.emit(WS_EVENTS.CONFIRM_BET, { roomCode });
   }, []);
-  
+
   const revealResult = useCallback((roomCode: string) => {
-      socketClient.emit(WS_EVENTS.REVEAL_RESULT, { roomCode });
+    socketClient.emit(WS_EVENTS.REVEAL_RESULT, { roomCode });
   }, []);
 
   const nextQuestion = useCallback((roomCode: string) => {
-      socketClient.emit(WS_EVENTS.NEXT_QUESTION, { roomCode });
+    socketClient.emit(WS_EVENTS.NEXT_QUESTION, { roomCode });
   }, []);
 
   return {
@@ -128,6 +141,6 @@ export function useGameSocket() {
     updateBet,
     confirmBet,
     revealResult,
-    nextQuestion
+    nextQuestion,
   };
 }

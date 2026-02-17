@@ -6,18 +6,32 @@ import {
   type Player,
   type Question,
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export interface IStorage {
   createGame(hostName: string, maxPlayers: number, code: string): Promise<Game>;
   getGameByCode(code: string): Promise<Game | undefined>;
   updateGameState(gameId: number, state: string): Promise<void>;
-  updateGameQuestion(gameId: number, index: number): Promise<void>; // Añadida para evitar errores
+  updateGameQuestion(gameId: number, index: number): Promise<void>;
+  updateQuestionIndex(gameId: number, index: number): Promise<void>;
   addPlayer(gameId: number, socketId: string, name: string): Promise<Player>;
   getPlayerBySocketId(socketId: string): Promise<Player | undefined>;
   updatePlayer(playerId: number, updates: Partial<Player>): Promise<Player>;
   getPlayersInGame(gameId: number): Promise<Player[]>;
   getQuestions(): Promise<Question[]>;
+  // ✅ NUEVOS
+  updatePlayerBet(
+    gameId: number,
+    socketId: string,
+    bet: Record<string, number>,
+  ): Promise<void>;
+  confirmPlayerBet(gameId: number, socketId: string): Promise<void>;
+  updatePlayerMoney(
+    gameId: number,
+    socketId: string,
+    money: number,
+  ): Promise<void>;
+  resetPlayerBet(gameId: number, socketId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -26,7 +40,6 @@ export class DatabaseStorage implements IStorage {
     maxPlayers: number,
     code: string,
   ): Promise<Game> {
-    // Corregido: Ahora incluimos currentQuestionIndex: 0 para que la DB no falle
     const [game] = await db
       .insert(games)
       .values({
@@ -49,8 +62,15 @@ export class DatabaseStorage implements IStorage {
     await db.update(games).set({ state }).where(eq(games.id, gameId));
   }
 
-  // Nueva función para que el Host avance de pregunta en la DB
   async updateGameQuestion(gameId: number, index: number): Promise<void> {
+    await db
+      .update(games)
+      .set({ currentQuestionIndex: index })
+      .where(eq(games.id, gameId));
+  }
+
+  // ✅ Alias para routes.ts
+  async updateQuestionIndex(gameId: number, index: number): Promise<void> {
     await db
       .update(games)
       .set({ currentQuestionIndex: index })
@@ -64,13 +84,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<Player> {
     const [player] = await db
       .insert(players)
-      .values({
-        gameId,
-        socketId,
-        name,
-        money: 1000000,
-        status: "active",
-      })
+      .values({ gameId, socketId, name, money: 1000000, status: "active" })
       .returning();
     return player;
   }
@@ -116,6 +130,49 @@ export class DatabaseStorage implements IStorage {
   async getQuestions(): Promise<Question[]> {
     return QUESTIONS_DATA;
   }
+
+  // ✅ NUEVO: Guarda la apuesta actual del jugador (JSON en columna currentBet)
+  async updatePlayerBet(
+    gameId: number,
+    socketId: string,
+    bet: Record<string, number>,
+  ): Promise<void> {
+    await db
+      .update(players)
+      .set({ currentBet: bet })
+      .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
+
+  // ✅ NUEVO: Marca al jugador como confirmado
+  async confirmPlayerBet(gameId: number, socketId: string): Promise<void> {
+    await db
+      .update(players)
+      .set({ hasConfirmed: true })
+      .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
+
+  // ✅ NUEVO: Actualiza el dinero del jugador y su estado
+  async updatePlayerMoney(
+    gameId: number,
+    socketId: string,
+    money: number,
+  ): Promise<void> {
+    await db
+      .update(players)
+      .set({
+        money,
+        status: money <= 0 ? "eliminated" : "active",
+      })
+      .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
+
+  // ✅ NUEVO: Resetea apuesta y confirmación al pasar de pregunta
+  async resetPlayerBet(gameId: number, socketId: string): Promise<void> {
+    await db
+      .update(players)
+      .set({ currentBet: {}, hasConfirmed: false })
+      .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
 }
 
 export const storage = new DatabaseStorage();
@@ -125,48 +182,55 @@ const QUESTIONS_DATA: Question[] = [
     id: 1,
     order: 1,
     type: "normal",
+    maxOptionsToBet: 3,
     text: "Quin any va inventar Nikolaus August Otto el primer motor de quatre temps amb compressió?",
     options: [
-      { id: "A", text: "1876", isCorrect: true },
-      { id: "B", text: "1878", isCorrect: false },
-      { id: "C", text: "1880", isCorrect: false },
-      { id: "D", text: "1885", isCorrect: false },
+      { letter: "A", id: "A", text: "1876", isCorrect: true },
+      { letter: "B", id: "B", text: "1878", isCorrect: false },
+      { letter: "C", id: "C", text: "1880", isCorrect: false },
+      { letter: "D", id: "D", text: "1885", isCorrect: false },
     ],
   },
   {
     id: 2,
     order: 2,
     type: "normal",
+    maxOptionsToBet: 3,
     text: "Quin és el component que transforma el moviment rectilini del pistó en moviment rotatiu?",
     options: [
-      { id: "A", text: "La biela", isCorrect: false },
-      { id: "B", text: "El cigonyal", isCorrect: true },
-      { id: "C", text: "El volant d'inèrcia", isCorrect: false },
-      { id: "D", text: "L'arbre de lleves", isCorrect: false },
+      { letter: "A", id: "A", text: "La biela", isCorrect: false },
+      { letter: "B", id: "B", text: "El cigonyal", isCorrect: true },
+      { letter: "C", id: "C", text: "El volant d'inèrcia", isCorrect: false },
+      { letter: "D", id: "D", text: "L'arbre de lleves", isCorrect: false },
     ],
   },
   {
     id: 3,
     order: 3,
     type: "normal",
+    maxOptionsToBet: 3,
     text: "En quin ordre es produeixen les fases del motor de 4 temps?",
     options: [
       {
+        letter: "A",
         id: "A",
         text: "Compressió, admissió, explosió, escapament",
         isCorrect: false,
       },
       {
+        letter: "B",
         id: "B",
         text: "Admissió, compressió, explosió, escapament",
         isCorrect: true,
       },
       {
+        letter: "C",
         id: "C",
         text: "Explosió, compressió, admissió, escapament",
         isCorrect: false,
       },
       {
+        letter: "D",
         id: "D",
         text: "Admissió, explosió, compressió, escapament",
         isCorrect: false,
@@ -177,30 +241,35 @@ const QUESTIONS_DATA: Question[] = [
     id: 4,
     order: 4,
     type: "reduced",
+    maxOptionsToBet: 2,
     text: "Quina temperatura pot superar la combustió dins del cilindre?",
     options: [
-      { id: "A", text: "500 °C", isCorrect: false },
-      { id: "B", text: "1.000 °C", isCorrect: false },
-      { id: "C", text: "2.000 °C", isCorrect: true },
+      { letter: "A", id: "A", text: "500 °C", isCorrect: false },
+      { letter: "B", id: "B", text: "1.000 °C", isCorrect: false },
+      { letter: "C", id: "C", text: "2.000 °C", isCorrect: true },
     ],
   },
   {
     id: 5,
     order: 5,
     type: "reduced",
+    maxOptionsToBet: 2,
     text: "Què és el càrter en un motor Otto?",
     options: [
       {
+        letter: "A",
         id: "A",
         text: "La peça que tanca els cilindres per dalt",
         isCorrect: false,
       },
       {
+        letter: "B",
         id: "B",
         text: "El dipòsit d'oli a la part inferior del motor",
         isCorrect: true,
       },
       {
+        letter: "C",
         id: "C",
         text: "L'element que uneix el pistó amb el cigonyal",
         isCorrect: false,
@@ -211,19 +280,23 @@ const QUESTIONS_DATA: Question[] = [
     id: 6,
     order: 6,
     type: "reduced",
+    maxOptionsToBet: 2,
     text: "Segons el Segon Principi de la Termodinàmica aplicat al motor:",
     options: [
       {
+        letter: "A",
         id: "A",
         text: "Tota la calor es converteix en treball útil",
         isCorrect: false,
       },
       {
+        letter: "B",
         id: "B",
         text: "Part de l'energia s'ha de cedir a un focus fred",
         isCorrect: true,
       },
       {
+        letter: "C",
         id: "C",
         text: "No es pot generar energia mecànica des de calor",
         isCorrect: false,
@@ -234,25 +307,33 @@ const QUESTIONS_DATA: Question[] = [
     id: 7,
     order: 7,
     type: "reduced",
+    maxOptionsToBet: 2,
     text: "Quina diferència principal té el motor de 2 temps respecte al de 4 temps?",
     options: [
-      { id: "A", text: "Té vàlvules més complexes", isCorrect: false },
       {
+        letter: "A",
+        id: "A",
+        text: "Té vàlvules més complexes",
+        isCorrect: false,
+      },
+      {
+        letter: "B",
         id: "B",
         text: "Completa el cicle en una volta de cigonyal",
         isCorrect: true,
       },
-      { id: "C", text: "És menys contaminant", isCorrect: false },
+      { letter: "C", id: "C", text: "És menys contaminant", isCorrect: false },
     ],
   },
   {
     id: 8,
     order: 8,
     type: "final",
+    maxOptionsToBet: 1,
     text: "Quina és la temperatura de treball òptima d'un motor Otto?",
     options: [
-      { id: "A", text: "90 °C", isCorrect: true },
-      { id: "B", text: "150 °C", isCorrect: false },
+      { letter: "A", id: "A", text: "90 °C", isCorrect: true },
+      { letter: "B", id: "B", text: "150 °C", isCorrect: false },
     ],
   },
 ];
