@@ -12,6 +12,7 @@ interface TrapdoorProps {
   disabled?: boolean;
   result?: "correct" | "incorrect" | null; // For reveal animation
   showResult?: boolean;
+  text: string;
 }
 
 export function Trapdoor({ 
@@ -21,7 +22,8 @@ export function Trapdoor({
   onRemove, 
   disabled, 
   result, 
-  showResult 
+  showResult,
+  text
 }: TrapdoorProps) {
   
   const isCorrect = result === "correct";
@@ -39,6 +41,13 @@ export function Trapdoor({
         showResult && isCorrect && "border-green-500 shadow-[0_0_30px_rgba(34,197,94,0.4)]",
         showResult && isIncorrect && "border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)]"
       )}>
+
+        {/* Option Text Overlay */}
+        <div className="absolute inset-0 p-6 pt-16 flex items-center justify-center text-center">
+          <span className="text-white font-bold text-lg leading-tight">
+            {text}
+          </span>
+        </div>
         
         {/* Money Stack Visualization */}
         <AnimatePresence>

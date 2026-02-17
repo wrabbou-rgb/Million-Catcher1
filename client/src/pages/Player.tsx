@@ -290,6 +290,7 @@ export default function Player() {
             <Trapdoor 
               key={option.id}
               letter={option.id}
+              text={option.text}
               amount={localDistribution[option.id] || 0}
               maxAmount={currentMoney}
               onAdd={() => handleAddMoney(option.id)}
