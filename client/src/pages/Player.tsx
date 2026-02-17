@@ -5,9 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { Trapdoor } from "@/components/Trapdoor";
-import { MoneyCounter } from "@/components/MoneyCounter";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Loader2, XCircle } from "lucide-react";
+// @ts-ignore
 import confetti from "canvas-confetti";
 
 const QUESTIONS = [
@@ -131,13 +131,14 @@ const QUESTIONS = [
   },
 ];
 
-const formatMoney = (amount: number) => {
+const formatMoney = (amount: number | undefined | null) => {
+  const safe = typeof amount === "number" && !isNaN(amount) ? amount : 0;
   return new Intl.NumberFormat("ca-ES", {
     style: "currency",
     currency: "EUR",
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
-  }).format(amount);
+  }).format(safe);
 };
 
 const getRulesText = (questionIndex: number) => {
@@ -153,7 +154,6 @@ export default function Player() {
     gameState,
     myPlayer,
     joinRoom,
-    updateBet,
     confirmBet: serverConfirm,
     nextQuestion: serverNext,
     isJoining,
@@ -162,7 +162,6 @@ export default function Player() {
   const [roomCode, setRoomCode] = useState("");
   const [playerName, setPlayerName] = useState("");
 
-  // LOCAL question index - this is what controls the screen
   const [localQIndex, setLocalQIndex] = useState(0);
   const [localMoney, setLocalMoney] = useState(1000000);
   const [localDistribution, setLocalDistribution] = useState<
@@ -175,29 +174,31 @@ export default function Player() {
   const [countdown, setCountdown] = useState<number | null>(null);
 
   const currentQuestion = QUESTIONS[localQIndex];
-
   const distributedAmount = Object.values(localDistribution).reduce(
     (a, b) => a + b,
     0,
   );
   const availableMoney = localMoney - distributedAmount;
-
   const optionsWithMoney = Object.values(localDistribution).filter(
     (v) => v > 0,
   ).length;
   const totalOptions = currentQuestion?.options.length || 0;
-  const isValid = availableMoney === 0 && optionsWithMoney < totalOptions;
 
-  // Reset when question changes
+  const isValid =
+    availableMoney === 0 &&
+    optionsWithMoney > 0 &&
+    optionsWithMoney < totalOptions;
+
   useEffect(() => {
     setLocalDistribution({});
     setIsConfirmed(false);
     setIsRevealed(false);
+    setIsEliminated(false);
     setCountdown(null);
   }, [localQIndex]);
 
   const handleAddMoney = (optionId: string) => {
-    if (availableMoney <= 0) return;
+    if (availableMoney <= 0 || isConfirmed) return;
     const step = 50000;
     const toAdd = Math.min(step, availableMoney);
     setLocalDistribution((prev) => ({
@@ -207,6 +208,7 @@ export default function Player() {
   };
 
   const handleRemoveMoney = (optionId: string) => {
+    if (isConfirmed) return;
     const current = localDistribution[optionId] || 0;
     if (current <= 0) return;
     const step = 50000;
@@ -218,12 +220,12 @@ export default function Player() {
   };
 
   const handleConfirm = () => {
+    if (!isValid) return;
     setIsConfirmed(true);
     serverConfirm();
   };
 
   const handleReveal = () => {
-    // Start countdown
     setCountdown(3);
     const interval = setInterval(() => {
       setCountdown((prev) => {
@@ -232,29 +234,23 @@ export default function Player() {
           setCountdown(null);
           setIsRevealed(true);
 
-          // Calculate result
           const correctOption = currentQuestion.options.find(
             (o) => o.isCorrect,
           );
           const moneyOnCorrect =
             localDistribution[correctOption?.id || ""] || 0;
+          const nextQIndex = localQIndex + 1;
 
           if (moneyOnCorrect > 0) {
-            // Survived - update local money
-            setLocalMoney(moneyOnCorrect);
-            confetti({
-              particleCount: 150,
-              spread: 80,
-              origin: { y: 0.6 },
-            });
-            // Sync with server
-            serverNext();
+            const newMoney = moneyOnCorrect;
+            setLocalMoney(newMoney);
+            confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+            serverNext(newMoney, nextQIndex, "active");
           } else {
-            // Eliminated
             setLocalMoney(0);
             setIsEliminated(true);
+            serverNext(0, localQIndex, "eliminated");
           }
-
           return null;
         }
         return prev - 1;
@@ -265,12 +261,12 @@ export default function Player() {
   const handleNext = () => {
     if (localQIndex >= QUESTIONS.length - 1) {
       setIsFinished(true);
+      serverNext(localMoney, QUESTIONS.length, "winner");
     } else {
       setLocalQIndex((prev) => prev + 1);
     }
   };
 
-  // === 1. Join Screen ===
   if (!gameState) {
     return (
       <div className="min-h-screen flex items-center justify-center p-6 bg-background">
@@ -317,14 +313,10 @@ export default function Player() {
             </div>
           </Card>
         </motion.div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
-        </div>
       </div>
     );
   }
 
-  // === 2. Waiting Screen ===
   if (gameState.status === "waiting") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background space-y-8">
@@ -339,25 +331,17 @@ export default function Player() {
           <div className="text-3xl font-bold text-primary">
             {formatMoney(1000000)}
           </div>
-          <p className="text-slate-500 text-sm">Balance inicial</p>
-        </div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
         </div>
       </div>
     );
   }
 
-  // === 3. Finished Screen ===
   if (isFinished) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
         <div className="text-center space-y-6">
           <div className="text-8xl">🏆</div>
           <h1 className="text-5xl font-black text-yellow-400">HAS GUANYAT!</h1>
-          <p className="text-white text-xl">
-            Has completat totes les preguntes!
-          </p>
           <div className="p-6 bg-slate-900 rounded-xl border border-yellow-400/30">
             <p className="text-slate-400 text-sm mb-2">Premi final</p>
             <p className="text-4xl font-bold text-yellow-400">
@@ -365,14 +349,10 @@ export default function Player() {
             </p>
           </div>
         </div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
-        </div>
       </div>
     );
   }
 
-  // === 4. Eliminated Screen ===
   if (isEliminated && isRevealed) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-background">
@@ -382,19 +362,11 @@ export default function Player() {
           <p className="text-white text-xl">
             No tenies diners en la resposta correcta.
           </p>
-          <div className="p-6 bg-slate-900 rounded-xl">
-            <p className="text-slate-400 text-sm mb-2">Balance final</p>
-            <p className="text-4xl font-bold text-red-500">0 €</p>
-          </div>
-        </div>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
         </div>
       </div>
     );
   }
 
-  // === 5. Countdown overlay ===
   if (countdown !== null) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background">
@@ -411,17 +383,12 @@ export default function Player() {
             <p className="text-white text-2xl mt-4">Revelant la resposta...</p>
           </motion.div>
         </AnimatePresence>
-        <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
-          Developed by Walid Rabbou
-        </div>
       </div>
     );
   }
 
-  // === 6. Playing Screen ===
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      {/* Top Bar */}
       <header className="p-4 bg-slate-900 border-b border-white/10 flex justify-between items-center sticky top-0 z-50">
         <div className="flex flex-col">
           <span className="text-slate-400 text-xs uppercase tracking-widest">
@@ -452,19 +419,16 @@ export default function Player() {
       </header>
 
       <main className="flex-1 container mx-auto p-4 flex flex-col gap-4 max-w-4xl">
-        {/* Rules */}
         <div className="bg-slate-800/50 border border-white/5 rounded-full px-4 py-2 text-center">
           <p className="text-xs text-slate-400">{getRulesText(localQIndex)}</p>
         </div>
 
-        {/* Question */}
         <div className="py-4 text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
             {currentQuestion.text}
           </h2>
         </div>
 
-        {/* Options */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1">
           {currentQuestion.options.map((option) => (
             <Trapdoor
@@ -484,7 +448,6 @@ export default function Player() {
           ))}
         </div>
 
-        {/* Result message after reveal */}
         {isRevealed && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -511,7 +474,6 @@ export default function Player() {
           </motion.div>
         )}
 
-        {/* Action Button */}
         <div className="py-4 flex justify-center sticky bottom-0 bg-gradient-to-t from-background via-background to-transparent pt-8">
           {!isConfirmed ? (
             <NeonButton
@@ -539,7 +501,6 @@ export default function Player() {
           )}
         </div>
       </main>
-
       <div className="fixed bottom-4 right-6 text-white/50 text-xs pointer-events-none">
         Developed by Walid Rabbou
       </div>
