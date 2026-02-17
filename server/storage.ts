@@ -1,38 +1,175 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
 
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import { games, players, questions, type Game, type Player, type Question } from "@shared/schema";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Game Management
+  createGame(hostName: string, maxPlayers: number, code: string): Promise<Game>;
+  getGameByCode(code: string): Promise<Game | undefined>;
+  updateGameState(gameId: number, state: string): Promise<void>;
+  
+  // Player Management
+  addPlayer(gameId: number, socketId: string, name: string): Promise<Player>;
+  getPlayerBySocketId(socketId: string): Promise<Player | undefined>;
+  updatePlayer(playerId: number, updates: Partial<Player>): Promise<Player>;
+  getPlayersInGame(gameId: number): Promise<Player[]>;
+  
+  // Questions (Static for now, but good to have interface)
+  getQuestions(): Promise<Question[]>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
+export class DatabaseStorage implements IStorage {
+  // In-memory fallback for high-speed game state if needed, 
+  // but we'll try to use DB for persistence and robustness.
+  // For a real-time game, usually in-memory is better for the active state,
+  // but let's stick to the pattern. We can optimize later.
 
-  constructor() {
-    this.users = new Map();
+  async createGame(hostName: string, maxPlayers: number, code: string): Promise<Game> {
+    const [game] = await db.insert(games).values({
+      hostName,
+      maxPlayers,
+      code,
+      state: "waiting",
+    }).returning();
+    return game;
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getGameByCode(code: string): Promise<Game | undefined> {
+    const [game] = await db.select().from(games).where(eq(games.code, code));
+    return game;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async updateGameState(gameId: number, state: string): Promise<void> {
+    await db.update(games).set({ state }).where(eq(games.id, gameId));
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async addPlayer(gameId: number, socketId: string, name: string): Promise<Player> {
+    const [player] = await db.insert(players).values({
+      gameId,
+      socketId,
+      name,
+      money: 1000000,
+      status: "active",
+    }).returning();
+    return player;
+  }
+
+  async getPlayerBySocketId(socketId: string): Promise<Player | undefined> {
+    const [player] = await db.select().from(players).where(eq(players.socketId, socketId));
+    return player;
+  }
+
+  async updatePlayer(playerId: number, updates: Partial<Player>): Promise<Player> {
+    const [player] = await db.update(players)
+      .set(updates)
+      .where(eq(players.id, playerId))
+      .returning();
+    return player;
+  }
+
+  async getPlayersInGame(gameId: number): Promise<Player[]> {
+    return await db.select().from(players).where(eq(players.gameId, gameId));
+  }
+
+  async getQuestions(): Promise<Question[]> {
+    // This could be fetched from DB or return hardcoded list matching the prompt
+    return QUESTIONS_DATA;
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
+
+// Hardcoded questions based on prompt
+const QUESTIONS_DATA: Question[] = [
+  {
+    id: 1,
+    order: 1,
+    type: "normal",
+    text: "Quin any va inventar Nikolaus August Otto el primer motor de quatre temps amb compressió?",
+    options: [
+      { id: "A", text: "1876", isCorrect: true },
+      { id: "B", text: "1878", isCorrect: false },
+      { id: "C", text: "1880", isCorrect: false },
+      { id: "D", text: "1885", isCorrect: false },
+    ],
+  },
+  {
+    id: 2,
+    order: 2,
+    type: "normal",
+    text: "Quin és el component que transforma el moviment rectilini del pistó en moviment rotatiu?",
+    options: [
+      { id: "A", text: "La biela", isCorrect: false },
+      { id: "B", text: "El cigonyal", isCorrect: true },
+      { id: "C", text: "El volant d'inèrcia", isCorrect: false },
+      { id: "D", text: "L'arbre de lleves", isCorrect: false },
+    ],
+  },
+  {
+    id: 3,
+    order: 3,
+    type: "normal",
+    text: "En quin ordre es produeixen les fases del motor de 4 temps?",
+    options: [
+      { id: "A", text: "Compressió, admissió, explosió, escapament", isCorrect: false },
+      { id: "B", text: "Admissió, compressió, explosió, escapament", isCorrect: true },
+      { id: "C", text: "Explosió, compressió, admissió, escapament", isCorrect: false },
+      { id: "D", text: "Admissió, explosió, compressió, escapament", isCorrect: false },
+    ],
+  },
+  {
+    id: 4,
+    order: 4,
+    type: "reduced",
+    text: "Quina temperatura pot superar la combustió dins del cilindre?",
+    options: [
+      { id: "A", text: "500 graus C", isCorrect: false },
+      { id: "B", text: "1.000 graus C", isCorrect: false },
+      { id: "C", text: "2.000 graus C", isCorrect: true },
+    ],
+  },
+  {
+    id: 5,
+    order: 5,
+    type: "reduced",
+    text: "Què és el càrter en un motor Otto?",
+    options: [
+      { id: "A", text: "La peça que tanca els cilindres per dalt", isCorrect: false },
+      { id: "B", text: "El dipòsit d'oli a la part inferior del motor", isCorrect: true },
+      { id: "C", text: "L'element que uneix el pistó amb el cigonyal", isCorrect: false },
+    ],
+  },
+  {
+    id: 6,
+    order: 6,
+    type: "reduced",
+    text: "Segons el Segon Principi de la Termodinàmica aplicat al motor:",
+    options: [
+      { id: "A", text: "Tota la calor es converteix en treball útil", isCorrect: false },
+      { id: "B", text: "Part de l'energia s'ha de cedir a un focus fred", isCorrect: true },
+      { id: "C", text: "No es pot generar energia mecànica des de calor", isCorrect: false },
+    ],
+  },
+  {
+    id: 7,
+    order: 7,
+    type: "reduced",
+    text: "Quina diferència principal té el motor de 2 temps respecte al de 4 temps?",
+    options: [
+      { id: "A", text: "Té vàlvules més complexes", isCorrect: false },
+      { id: "B", text: "Completa el cicle en una volta de cigonyal", isCorrect: true },
+      { id: "C", text: "És menys contaminant", isCorrect: false },
+    ],
+  },
+  {
+    id: 8,
+    order: 8,
+    type: "final",
+    text: "Quina és la temperatura de treball òptima d'un motor Otto?",
+    options: [
+      { id: "A", text: "90 graus C", isCorrect: true },
+      { id: "B", text: "150 graus C", isCorrect: false },
+    ],
+  },
+];
