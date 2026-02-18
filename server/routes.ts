@@ -29,7 +29,20 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     socket.on("JOIN_ROOM", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
-      await storage.addPlayer(game.id, socket.id, data.playerName);
+
+      // ✅ FIX RECONEXIÓN: buscar si ya existe un jugador con ese nombre
+      const existingPlayer = await storage.getPlayerByNameInGame(
+        game.id,
+        data.playerName,
+      );
+      if (existingPlayer) {
+        // Actualizar su socketId al nuevo (reconexión)
+        await storage.updatePlayerSocketId(existingPlayer.id, socket.id);
+      } else {
+        // Jugador nuevo
+        await storage.addPlayer(game.id, socket.id, data.playerName);
+      }
+
       socket.join(data.roomCode);
       const players = await storage.getPlayersInGame(game.id);
       io.to(data.roomCode).emit("STATE_UPDATE", {
@@ -69,14 +82,20 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       io.to(data.roomCode).emit("STATE_UPDATE", { players });
     });
 
+    // ✅ FIX CONFIRMAR: emitimos el estado completo para que el host vea el badge
     socket.on("CONFIRM_BET", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
       await storage.confirmPlayerBet(game.id, socket.id);
       const players = await storage.getPlayersInGame(game.id);
-      io.to(data.roomCode).emit("STATE_UPDATE", { players });
+      io.to(data.roomCode).emit("STATE_UPDATE", {
+        players,
+        currentQuestionIndex: game.currentQuestionIndex,
+        currentQuestion: questions[game.currentQuestionIndex],
+      });
     });
 
+    // ✅ FIX ELIMINADOS: REVEAL_RESULT guarda status en DB y lo emite correctamente
     socket.on("REVEAL_RESULT", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
@@ -84,21 +103,22 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       const currentQuestion = questions[game.currentQuestionIndex];
       const correctLetter =
         currentQuestion.options.find((o: any) => o.isCorrect)?.letter ?? "";
-
       if (!correctLetter) return;
 
-      const updatedPlayers = await Promise.all(
+      // Actualizamos dinero Y status en DB para cada jugador
+      await Promise.all(
         players.map(async (player: any) => {
           const betOnCorrect = player.currentBet?.[correctLetter] || 0;
-          const newMoney = betOnCorrect;
-          await storage.updatePlayerMoney(game.id, player.socketId, newMoney);
-          return {
-            ...player,
-            money: newMoney,
-            status: newMoney <= 0 ? "eliminated" : "active",
-          };
+          await storage.updatePlayerMoney(
+            game.id,
+            player.socketId,
+            betOnCorrect,
+          );
         }),
       );
+
+      // Leemos los jugadores actualizados desde DB (con status correcto)
+      const updatedPlayers = await storage.getPlayersInGame(game.id);
 
       io.to(data.roomCode).emit("STATE_UPDATE", {
         players: updatedPlayers,
@@ -123,8 +143,11 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       await storage.updateQuestionIndex(game.id, nextIndex);
       const players = await storage.getPlayersInGame(game.id);
+      // Solo reseteamos apuestas de jugadores activos
       await Promise.all(
-        players.map((p: any) => storage.resetPlayerBet(game.id, p.socketId)),
+        players
+          .filter((p: any) => p.status === "active")
+          .map((p: any) => storage.resetPlayerBet(game.id, p.socketId)),
       );
       const freshPlayers = await storage.getPlayersInGame(game.id);
 
