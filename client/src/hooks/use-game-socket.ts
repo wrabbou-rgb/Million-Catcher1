@@ -131,6 +131,10 @@ export function useGameSocket() {
     socketClient.emit(WS_EVENTS.NEXT_QUESTION, { roomCode });
   }, []);
 
+  const eliminatePlayer = useCallback((roomCode: string, socketId: string) => {
+    socketClient.emit("ELIMINATE_PLAYER", { roomCode, socketId });
+  }, []);
+
   return {
     isConnected,
     socketId: playerId,
@@ -142,5 +146,6 @@ export function useGameSocket() {
     confirmBet,
     revealResult,
     nextQuestion,
+    eliminatePlayer,
   };
 }

@@ -31,13 +31,6 @@ export interface IStorage {
     money: number,
   ): Promise<void>;
   resetPlayerBet(gameId: number, socketId: string): Promise<void>;
-  // ✅ NUEVO: buscar jugador por nombre en una partida (para reconexión)
-  getPlayerByNameInGame(
-    gameId: number,
-    name: string,
-  ): Promise<Player | undefined>;
-  // ✅ NUEVO: actualizar socketId de un jugador existente
-  updatePlayerSocketId(playerId: number, socketId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -102,26 +95,6 @@ export class DatabaseStorage implements IStorage {
     return player;
   }
 
-  // ✅ NUEVO: buscar por nombre para reconexión
-  async getPlayerByNameInGame(
-    gameId: number,
-    name: string,
-  ): Promise<Player | undefined> {
-    const [player] = await db
-      .select()
-      .from(players)
-      .where(and(eq(players.gameId, gameId), eq(players.name, name)));
-    return player;
-  }
-
-  // ✅ NUEVO: actualizar socketId cuando alguien se reconecta
-  async updatePlayerSocketId(
-    playerId: number,
-    socketId: string,
-  ): Promise<void> {
-    await db.update(players).set({ socketId }).where(eq(players.id, playerId));
-  }
-
   async updatePlayer(
     playerId: number,
     updates: Partial<Player>,
@@ -174,7 +147,6 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
   }
 
-  // ✅ FIX: ahora también actualiza status correctamente
   async updatePlayerMoney(
     gameId: number,
     socketId: string,
@@ -182,10 +154,7 @@ export class DatabaseStorage implements IStorage {
   ): Promise<void> {
     await db
       .update(players)
-      .set({
-        money,
-        status: money <= 0 ? "eliminated" : "active",
-      })
+      .set({ money, status: money <= 0 ? "eliminated" : "active" })
       .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
   }
 

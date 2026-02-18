@@ -13,6 +13,7 @@ import {
   TrendingUp,
   TrendingDown,
   Minus,
+  Trash2,
 } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
@@ -20,7 +21,8 @@ import { useEffect, useRef, useState } from "react";
 export default function GameDashboard() {
   const [, params] = useRoute("/host/game/:code");
   const roomCode = params?.code || "";
-  const { gameState, revealResult, nextQuestion } = useGameSocket();
+  const { gameState, revealResult, nextQuestion, eliminatePlayer } =
+    useGameSocket();
 
   // ✅ Guardamos el ranking anterior para comparar posiciones
   const prevRankRef = useRef<Record<string, number>>({});
@@ -221,6 +223,7 @@ export default function GameDashboard() {
                   rank={index + 1}
                   revealedAnswer={revealedAnswer}
                   rankChange={rankChanges[player.id] ?? 0}
+                  onEliminate={(sid) => eliminatePlayer(roomCode, sid)}
                 />
               ))}
             </AnimatePresence>
@@ -280,11 +283,13 @@ function PlayerRow({
   rank,
   revealedAnswer,
   rankChange,
+  onEliminate,
 }: {
   player: Player;
   rank: number;
   revealedAnswer: string | null;
   rankChange: number;
+  onEliminate: (socketId: string) => void;
 }) {
   const isConfirmed = player.hasConfirmed;
   const playerBet = (player as any).currentBet || {};
@@ -383,12 +388,21 @@ function PlayerRow({
         </div>
       </div>
 
-      <div className="text-right pl-6">
+      <div className="flex flex-col items-end gap-2 pl-6">
         <MoneyDisplay
           amount={player.money}
           size="lg"
           className="text-primary"
         />
+        {!revealedAnswer && (
+          <button
+            onClick={() => onEliminate((player as any).socketId || player.id)}
+            className="flex items-center gap-1 text-xs text-red-400/60 hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-500/10"
+          >
+            <Trash2 className="w-3 h-3" />
+            Eliminar
+          </button>
+        )}
       </div>
     </motion.div>
   );
