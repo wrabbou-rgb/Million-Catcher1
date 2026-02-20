@@ -32,6 +32,11 @@ export interface IStorage {
   ): Promise<void>;
   resetPlayerBet(gameId: number, socketId: string): Promise<void>;
   removePlayer(gameId: number, socketId: string): Promise<void>;
+  updatePlayerSocketId(
+    gameId: number,
+    oldSocketId: string,
+    newSocketId: string,
+  ): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -166,11 +171,24 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
   }
 
-  // ✅ NUEVO: elimina completamente al jugador de la BD
   async removePlayer(gameId: number, socketId: string): Promise<void> {
     await db
       .delete(players)
       .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
+
+  // ✅ NUEVO: actualiza el socketId cuando un jugador se reconecta
+  async updatePlayerSocketId(
+    gameId: number,
+    oldSocketId: string,
+    newSocketId: string,
+  ): Promise<void> {
+    await db
+      .update(players)
+      .set({ socketId: newSocketId })
+      .where(
+        and(eq(players.gameId, gameId), eq(players.socketId, oldSocketId)),
+      );
   }
 }
 

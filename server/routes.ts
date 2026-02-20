@@ -29,7 +29,23 @@ export async function registerRoutes(httpServer: Server, app: Express) {
     socket.on("JOIN_ROOM", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
-      await storage.addPlayer(game.id, socket.id, data.playerName);
+
+      // ✅ Evitar duplicados: si ya existe un jugador con ese nombre, solo actualizamos su socketId
+      const existingPlayers = await storage.getPlayersInGame(game.id);
+      const existing = existingPlayers.find(
+        (p: any) => p.name === data.playerName,
+      );
+
+      if (existing) {
+        await storage.updatePlayerSocketId(
+          game.id,
+          existing.socketId,
+          socket.id,
+        );
+      } else {
+        await storage.addPlayer(game.id, socket.id, data.playerName);
+      }
+
       socket.join(data.roomCode);
       const players = await storage.getPlayersInGame(game.id);
       io.to(data.roomCode).emit("STATE_UPDATE", {
@@ -90,12 +106,24 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           .filter((p: any) => p.status === "active")
           .map(async (player: any) => {
             const bet = player.currentBet || {};
+
+            // Total apostado en todas las opciones
             const totalBet = Object.values(bet).reduce(
-              (a: number, b: any) => a + b,
+              (a: number, b: any) => a + Number(b),
               0,
             );
-            const betOnCorrect = bet[correctLetter] || 0;
-            const newMoney = totalBet === 0 ? 0 : betOnCorrect;
+
+            // Lo apostado en la correcta
+            const betOnCorrect = Number(bet[correctLetter] || 0);
+
+            // Lo que NO apostó en ninguna opción (nunca se pierde)
+            const notBet = player.money - totalBet;
+
+            // ✅ Conserva: lo apostado en la correcta + lo que no apostó
+            // Pierde: lo apostado en opciones incorrectas
+            // Eliminado: solo si se queda a 0€
+            const newMoney = betOnCorrect + notBet;
+
             await storage.updatePlayerMoney(game.id, player.socketId, newMoney);
             return {
               ...player,
@@ -149,26 +177,18 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
     });
 
-    // ✅ KICK: expulsa al jugador de la sala (no solo le pone a 0)
     socket.on("KICK_PLAYER", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
 
-      // Eliminamos al jugador de la BD
       await storage.removePlayer(game.id, data.socketId);
-
-      // Enviamos KICKED personalmente al socket expulsado
       io.to(data.socketId).emit("KICKED", {
         message: "Has estat expulsat de la sala pel presentador.",
       });
 
-      // Hacemos que abandone la room de socket.io
       const kickedSocket = io.sockets.sockets.get(data.socketId);
-      if (kickedSocket) {
-        kickedSocket.leave(data.roomCode);
-      }
+      if (kickedSocket) kickedSocket.leave(data.roomCode);
 
-      // Actualizamos la lista para todos los demás
       const players = await storage.getPlayersInGame(game.id);
       io.to(data.roomCode).emit("STATE_UPDATE", { players });
     });
