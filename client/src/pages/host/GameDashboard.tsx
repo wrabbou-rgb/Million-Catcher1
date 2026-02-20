@@ -385,13 +385,39 @@ export default function GameDashboard() {
 
         <div className="text-right">
           <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
-            Jugadors Actius
+            Han Confirmat
           </h2>
-          <div className="text-3xl font-bold text-white">
-            <span className="text-green-500">{activePlayers.length}</span>
+          <div className="text-3xl font-bold text-white flex items-center justify-end gap-2">
+            <motion.span
+              key={activePlayers.filter((p) => p.hasConfirmed).length}
+              initial={{ scale: 1.4 }}
+              animate={{ scale: 1 }}
+              transition={{ duration: 0.25 }}
+              className={clsx(
+                "font-black",
+                activePlayers.filter((p) => p.hasConfirmed).length ===
+                  activePlayers.length && activePlayers.length > 0
+                  ? "text-green-400"
+                  : "text-yellow-400",
+              )}
+            >
+              {activePlayers.filter((p) => p.hasConfirmed).length}
+            </motion.span>
             <span className="text-white/30">/</span>
-            <span>{gameState?.players.length || 0}</span>
+            <span>{activePlayers.length}</span>
           </div>
+          {!revealedAnswer &&
+            activePlayers.length > 0 &&
+            activePlayers.filter((p) => p.hasConfirmed).length ===
+              activePlayers.length && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="text-green-400 text-xs font-bold mt-1"
+              >
+                Tots confirmats ✓
+              </motion.p>
+            )}
         </div>
       </div>
 
