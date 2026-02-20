@@ -24,11 +24,11 @@ export interface GameState {
   players: Player[];
   status: GameStatus;
   currentQuestion?: Question;
-  currentQuestionIndex: number; // ✅ AÑADIDO
+  currentQuestionIndex: number;
   questionIndex: number;
   totalQuestions: number;
-  questions?: Question[]; // ✅ AÑADIDO
-  revealedAnswer?: string | null; // ✅ AÑADIDO
+  questions?: Question[];
+  revealedAnswer?: string | null;
 }
 
 export function useGameSocket() {
@@ -49,11 +49,20 @@ export function useGameSocket() {
       setIsConnected(false);
     }
 
-    // ✅ Merge del estado: no reemplaza todo, solo actualiza los campos que llegan
+    // STATE_UPDATE: merge completo
     function onStateUpdate(newState: Partial<GameState>) {
       setGameState((prev) => {
         if (!prev) return newState as GameState;
         return { ...prev, ...newState };
+      });
+    }
+
+    // PLAYERS_UPDATE: solo actualiza la lista de jugadores (para CONFIRM_BET)
+    // evita interferencias con el resto del estado
+    function onPlayersUpdate(data: { players: Player[] }) {
+      setGameState((prev) => {
+        if (!prev) return prev;
+        return { ...prev, players: data.players };
       });
     }
 
@@ -84,6 +93,7 @@ export function useGameSocket() {
     socket?.on("connect", onConnect);
     socket?.on("disconnect", onDisconnect);
     socket?.on(WS_EVENTS.STATE_UPDATE, onStateUpdate);
+    socket?.on("PLAYERS_UPDATE", onPlayersUpdate);
     socket?.on(WS_EVENTS.ERROR, onError);
     socket?.on(WS_EVENTS.ROOM_CREATED, onRoomCreated);
     socket?.on(WS_EVENTS.GAME_STARTED, onGameStarted);
@@ -94,6 +104,7 @@ export function useGameSocket() {
       socket?.off("connect", onConnect);
       socket?.off("disconnect", onDisconnect);
       socket?.off(WS_EVENTS.STATE_UPDATE, onStateUpdate);
+      socket?.off("PLAYERS_UPDATE", onPlayersUpdate);
       socket?.off(WS_EVENTS.ERROR, onError);
       socket?.off(WS_EVENTS.ROOM_CREATED, onRoomCreated);
       socket?.off(WS_EVENTS.GAME_STARTED, onGameStarted);
