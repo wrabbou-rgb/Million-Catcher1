@@ -61,27 +61,21 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
     });
 
-    // Jugador actualiza apuesta — solo guardamos, NO emitimos a toda la sala
-    // para evitar interferencias con muchos jugadores simultáneos
     socket.on("UPDATE_BET", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
       await storage.updatePlayerBet(game.id, socket.id, data.bet);
-      // Solo confirmamos al jugador que envió, no broadcast
       socket.emit("BET_SAVED", { ok: true });
     });
 
-    // Jugador confirma — guardamos y emitimos solo players a toda la sala
     socket.on("CONFIRM_BET", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
       await storage.confirmPlayerBet(game.id, socket.id);
       const players = await storage.getPlayersInGame(game.id);
-      // Emitimos solo los jugadores con su estado de confirmación
       io.to(data.roomCode).emit("PLAYERS_UPDATE", { players });
     });
 
-    // ✅ REVEAL: siempre permitido, si alguien no ha apostado pierde todo
     socket.on("REVEAL_RESULT", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
@@ -91,8 +85,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
         currentQuestion.options.find((o: any) => o.isCorrect)?.letter ?? "";
       if (!correctLetter) return;
 
-      // Para cada jugador: conserva solo lo apostado en la correcta
-      // Si no apostó nada (currentBet vacío o no confirmó), pierde todo
       const updatedPlayers = await Promise.all(
         players
           .filter((p: any) => p.status === "active")
@@ -103,7 +95,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
               0,
             );
             const betOnCorrect = bet[correctLetter] || 0;
-            // Si no apostó nada, pierde todo el dinero
             const newMoney = totalBet === 0 ? 0 : betOnCorrect;
             await storage.updatePlayerMoney(game.id, player.socketId, newMoney);
             return {
@@ -114,7 +105,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
           }),
       );
 
-      // Añadimos los eliminados sin cambios
       const eliminatedPlayers = players.filter(
         (p: any) => p.status === "eliminated",
       );
@@ -143,7 +133,6 @@ export async function registerRoutes(httpServer: Server, app: Express) {
 
       await storage.updateQuestionIndex(game.id, nextIndex);
       const players = await storage.getPlayersInGame(game.id);
-      // Solo reseteamos apuestas de activos
       await Promise.all(
         players
           .filter((p: any) => p.status === "active")
@@ -160,11 +149,26 @@ export async function registerRoutes(httpServer: Server, app: Express) {
       });
     });
 
-    // Host elimina manualmente a un jugador
-    socket.on("ELIMINATE_PLAYER", async (data) => {
+    // ✅ KICK: expulsa al jugador de la sala (no solo le pone a 0)
+    socket.on("KICK_PLAYER", async (data) => {
       const game = await storage.getGameByCode(data.roomCode);
       if (!game) return;
-      await storage.updatePlayerMoney(game.id, data.socketId, 0);
+
+      // Eliminamos al jugador de la BD
+      await storage.removePlayer(game.id, data.socketId);
+
+      // Enviamos KICKED personalmente al socket expulsado
+      io.to(data.socketId).emit("KICKED", {
+        message: "Has estat expulsat de la sala pel presentador.",
+      });
+
+      // Hacemos que abandone la room de socket.io
+      const kickedSocket = io.sockets.sockets.get(data.socketId);
+      if (kickedSocket) {
+        kickedSocket.leave(data.roomCode);
+      }
+
+      // Actualizamos la lista para todos los demás
       const players = await storage.getPlayersInGame(game.id);
       io.to(data.roomCode).emit("STATE_UPDATE", { players });
     });

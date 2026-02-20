@@ -6,14 +6,14 @@ import { Button } from "@/components/ui/button";
 import { OptionCard } from "@/components/OptionCard";
 import { MoneyDisplay } from "@/components/MoneyDisplay";
 import { motion } from "framer-motion";
-import { Loader2, Lock, Trophy, Skull, WifiOff } from "lucide-react";
+import { Loader2, Lock, Trophy, Skull, WifiOff, XCircle } from "lucide-react";
 import confetti from "canvas-confetti";
 import { useToast } from "@/hooks/use-toast";
 
 export default function PlayerGame() {
   const [, params] = useRoute("/play/:code");
   const roomCode = params?.code || "";
-  const { gameState, socketId, updateBet, confirmBet, joinRoom } =
+  const { gameState, socketId, updateBet, confirmBet, joinRoom, kicked } =
     useGameSocket();
   const { toast } = useToast();
   const [localBet, setLocalBet] = useState<Record<string, number>>({});
@@ -30,13 +30,11 @@ export default function PlayerGame() {
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
 
-  // ✅ Reconexión automática: si tenemos roomCode y nombre guardado pero no estamos en la lista
+  // ✅ Reconexión automática
   useEffect(() => {
     if (!roomCode || !socketId || me) return;
-
     const savedName = sessionStorage.getItem(`player_name_${roomCode}`);
     if (savedName && gameState) {
-      // Estamos en la partida pero no nos encuentran → reconectarse
       setIsReconnecting(true);
       joinRoom(roomCode, savedName);
       setTimeout(() => setIsReconnecting(false), 3000);
@@ -77,6 +75,36 @@ export default function PlayerGame() {
       })();
     }
   }, [gameState?.status, me?.status]);
+
+  // ✅ PANTALLA DE EXPULSIÓN
+  if (kicked) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
+        <Watermark />
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: "spring", stiffness: 200, damping: 15 }}
+          className="mb-6"
+        >
+          <XCircle className="w-28 h-28 text-red-500 mx-auto drop-shadow-[0_0_30px_rgba(239,68,68,0.5)]" />
+        </motion.div>
+        <h1 className="text-4xl font-black text-red-400 mb-3">
+          Has estat expulsat
+        </h1>
+        <p className="text-white/60 text-lg mb-10">{kicked}</p>
+        <Button
+          size="lg"
+          className="h-14 px-10 text-lg font-bold"
+          onClick={() => {
+            window.location.href = "/";
+          }}
+        >
+          Tornar a l'inici
+        </Button>
+      </div>
+    );
+  }
 
   // Reconectando...
   if (isReconnecting || (!me && gameState)) {

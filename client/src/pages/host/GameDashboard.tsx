@@ -12,19 +12,246 @@ import {
   Trophy,
   TrendingUp,
   TrendingDown,
-  Minus,
   Trash2,
+  CheckCircle2,
+  Loader2,
 } from "lucide-react";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import confetti from "canvas-confetti";
 
+// ── Podio dramàtic ───────────────────────────────────────────────────────────
+function PodiumScreen({ players }: { players: Player[] }) {
+  const sorted = [...players].sort((a, b) => b.money - a.money);
+  const top3 = sorted.slice(0, 3);
+  const rest = sorted.slice(3);
+  const medals = ["🥇", "🥈", "🥉"];
+
+  // Fases: 0=cortina, 1=3r, 2=2n, 3=1r+confeti, 4=taula completa
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    const timers = [
+      setTimeout(() => setPhase(1), 1400),
+      setTimeout(() => setPhase(2), 3800),
+      setTimeout(() => setPhase(3), 6500),
+      setTimeout(() => setPhase(4), 9000),
+    ];
+
+    // Confeti quan apareix el primer
+    const confettiTimer = setTimeout(() => {
+      const end = Date.now() + 5000;
+      (function frame() {
+        confetti({
+          particleCount: 10,
+          angle: 60,
+          spread: 80,
+          origin: { x: 0 },
+          colors: ["#FFD700", "#a855f7", "#06b6d4", "#fff"],
+        });
+        confetti({
+          particleCount: 10,
+          angle: 120,
+          spread: 80,
+          origin: { x: 1 },
+          colors: ["#FFD700", "#a855f7", "#06b6d4", "#fff"],
+        });
+        if (Date.now() < end) requestAnimationFrame(frame);
+      })();
+    }, 6500);
+
+    return () => {
+      timers.forEach(clearTimeout);
+      clearTimeout(confettiTimer);
+    };
+  }, []);
+
+  return (
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative overflow-hidden">
+      <Watermark />
+
+      {/* ── Cortina inicial ── */}
+      <AnimatePresence>
+        {phase === 0 && (
+          <motion.div
+            key="curtain"
+            initial={{ opacity: 1 }}
+            exit={{
+              opacity: 0,
+              transition: { duration: 0.9, ease: "easeInOut" },
+            }}
+            className="absolute inset-0 bg-background z-50 flex flex-col items-center justify-center gap-6"
+          >
+            <motion.div
+              animate={{ scale: [1, 1.2, 1], rotate: [0, 5, -5, 0] }}
+              transition={{ repeat: Infinity, duration: 1.4 }}
+            >
+              <Trophy className="w-32 h-32 text-yellow-400 drop-shadow-[0_0_60px_rgba(234,179,8,0.9)]" />
+            </motion.div>
+            <motion.p
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ repeat: Infinity, duration: 1.2 }}
+              className="text-white/50 text-2xl font-black tracking-widest uppercase"
+            >
+              Preparant el Podi...
+            </motion.p>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Fons brillant */}
+      <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/8 via-transparent to-purple-500/5 z-0" />
+
+      <div className="relative z-10 w-full max-w-3xl text-center">
+        {/* Títol */}
+        <motion.div
+          initial={{ opacity: 0, y: -40 }}
+          animate={{ opacity: phase >= 1 ? 1 : 0, y: phase >= 1 ? 0 : -40 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+          className="mb-10"
+        >
+          <Trophy className="w-20 h-20 text-yellow-400 mx-auto mb-4 drop-shadow-[0_0_40px_rgba(234,179,8,0.7)]" />
+          <h1 className="text-5xl md:text-7xl font-black bg-gradient-to-r from-yellow-400 via-primary to-accent bg-clip-text text-transparent">
+            CLASSIFICACIÓ FINAL
+          </h1>
+        </motion.div>
+
+        {/* ── Podi visual — ordre: 3r | 1r | 2n ── */}
+        <div className="flex items-end justify-center gap-3 mb-12 min-h-[280px]">
+          {/* 3r lloc — apareix primer */}
+          <div className="flex-1">
+            <AnimatePresence>
+              {phase >= 1 && top3[2] && (
+                <motion.div
+                  initial={{ opacity: 0, y: 100, scale: 0.6 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 160, damping: 16 }}
+                  className="flex flex-col items-center justify-end h-36 rounded-t-2xl border border-orange-700/40 bg-orange-700/20 p-4"
+                >
+                  <span className="text-3xl mb-2">🥉</span>
+                  <span className="font-black text-base text-white truncate w-full text-center">
+                    {top3[2].name}
+                  </span>
+                  <span className="text-primary font-bold text-xs mt-1">
+                    {new Intl.NumberFormat().format(top3[2].money)}€
+                  </span>
+                  <span className="text-white/30 text-xs">3r lloc</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 1r lloc — apareix últim, centre, més alt */}
+          <div className="flex-1">
+            <AnimatePresence>
+              {phase >= 3 && top3[0] && (
+                <motion.div
+                  initial={{ opacity: 0, y: 120, scale: 0.5 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 140, damping: 14 }}
+                  className="flex flex-col items-center justify-end h-64 rounded-t-2xl border border-yellow-500/50 bg-yellow-500/15 p-4 shadow-[0_0_40px_rgba(234,179,8,0.3)]"
+                >
+                  <motion.span
+                    animate={{ rotate: [0, -12, 12, -8, 0] }}
+                    transition={{ delay: 0.4, duration: 0.7 }}
+                    className="text-5xl mb-3"
+                  >
+                    🥇
+                  </motion.span>
+                  <span className="font-black text-xl text-white truncate w-full text-center">
+                    {top3[0].name}
+                  </span>
+                  <span className="text-yellow-400 font-bold text-sm mt-1">
+                    {new Intl.NumberFormat().format(top3[0].money)}€
+                  </span>
+                  <span className="text-yellow-400/50 text-xs">1r lloc</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* 2n lloc — apareix segon */}
+          <div className="flex-1">
+            <AnimatePresence>
+              {phase >= 2 && top3[1] && (
+                <motion.div
+                  initial={{ opacity: 0, y: 100, scale: 0.6 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  transition={{ type: "spring", stiffness: 160, damping: 16 }}
+                  className="flex flex-col items-center justify-end h-48 rounded-t-2xl border border-slate-400/40 bg-slate-400/15 p-4"
+                >
+                  <span className="text-4xl mb-2">🥈</span>
+                  <span className="font-black text-lg text-white truncate w-full text-center">
+                    {top3[1].name}
+                  </span>
+                  <span className="text-primary font-bold text-xs mt-1">
+                    {new Intl.NumberFormat().format(top3[1].money)}€
+                  </span>
+                  <span className="text-white/30 text-xs">2n lloc</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+
+        {/* ── Classificació completa ── */}
+        <AnimatePresence>
+          {phase >= 4 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="space-y-2"
+            >
+              <p className="text-white/30 text-sm uppercase tracking-wider mb-4">
+                Classificació completa
+              </p>
+              {sorted.map((player, idx) => (
+                <motion.div
+                  key={player.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: idx * 0.06 }}
+                  className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-white/30 font-black w-8">
+                      #{idx + 1}
+                    </span>
+                    <span className="font-bold">
+                      {idx < 3 ? medals[idx] : ""} {player.name}
+                    </span>
+                  </div>
+                  <MoneyDisplay
+                    amount={player.money}
+                    size="sm"
+                    className="text-primary"
+                  />
+                </motion.div>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {phase >= 1 && phase < 4 && rest.length > 0 && (
+          <p className="text-white/20 text-sm mt-6">
+            {rest.length} jugador{rest.length > 1 ? "s" : ""} més...
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Dashboard principal ──────────────────────────────────────────────────────
 export default function GameDashboard() {
   const [, params] = useRoute("/host/game/:code");
   const roomCode = params?.code || "";
   const { gameState, revealResult, nextQuestion, eliminatePlayer } =
     useGameSocket();
 
-  // ✅ Guardamos el ranking anterior para comparar posiciones
+  const [isAdvancing, setIsAdvancing] = useState(false);
+  const [justAdvanced, setJustAdvanced] = useState(false);
   const prevRankRef = useRef<Record<string, number>>({});
   const [rankChanges, setRankChanges] = useState<Record<string, number>>({});
 
@@ -40,119 +267,41 @@ export default function GameDashboard() {
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
 
-  // Cada vez que cambia el orden, calculamos el delta de posición
+  useEffect(() => {
+    if (justAdvanced && !revealedAnswer) {
+      setJustAdvanced(false);
+      setIsAdvancing(false);
+    }
+  }, [revealedAnswer, justAdvanced]);
+
   useEffect(() => {
     if (sortedPlayers.length === 0) return;
-
     const currentRank: Record<string, number> = {};
     sortedPlayers.forEach((p, i) => {
       currentRank[p.id] = i + 1;
     });
-
     const changes: Record<string, number> = {};
     sortedPlayers.forEach((p) => {
       const prev = prevRankRef.current[p.id];
       if (prev !== undefined && prev !== currentRank[p.id]) {
-        changes[p.id] = prev - currentRank[p.id]; // positivo = subió, negativo = bajó
+        changes[p.id] = prev - currentRank[p.id];
       }
     });
-
     if (Object.keys(changes).length > 0) {
       setRankChanges(changes);
-      // Limpiamos el indicador después de 3 segundos
       setTimeout(() => setRankChanges({}), 3000);
     }
-
     prevRankRef.current = currentRank;
   }, [JSON.stringify(sortedPlayers.map((p) => p.id + p.money))]);
 
-  // Pantalla de podio cuando termina la partida
+  const handleNextQuestion = () => {
+    setIsAdvancing(true);
+    setJustAdvanced(true);
+    nextQuestion(roomCode);
+  };
+
   if (gameState?.status === "finished") {
-    const top3 = sortedPlayers.slice(0, 3);
-    const medals = ["🥇", "🥈", "🥉"];
-    const podiumOrder = [1, 0, 2];
-
-    return (
-      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative overflow-hidden">
-        <Watermark />
-        <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/5 to-transparent z-0" />
-        <div className="relative z-10 w-full max-w-3xl text-center">
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", delay: 0.2 }}
-          >
-            <Trophy className="w-24 h-24 text-yellow-500 mx-auto mb-6 drop-shadow-[0_0_40px_rgba(234,179,8,0.6)]" />
-          </motion.div>
-          <motion.h1
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="text-6xl font-black mb-12 bg-gradient-to-r from-yellow-400 to-primary bg-clip-text text-transparent"
-          >
-            CLASSIFICACIÓ FINAL
-          </motion.h1>
-
-          <div className="flex items-end justify-center gap-4 mb-12">
-            {podiumOrder.map((playerIdx, visualIdx) => {
-              const player = top3[playerIdx];
-              if (!player) return null;
-              const podiumHeights = ["h-40", "h-52", "h-32"];
-              return (
-                <motion.div
-                  key={player.id}
-                  initial={{ opacity: 0, y: 60 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 + visualIdx * 0.2, type: "spring" }}
-                  className={`flex flex-col items-center justify-end ${podiumHeights[visualIdx]} flex-1 rounded-t-2xl border border-white/10 p-4
-                    ${
-                      playerIdx === 0
-                        ? "bg-yellow-500/20 border-yellow-500/30"
-                        : playerIdx === 1
-                          ? "bg-white/10 border-white/20"
-                          : "bg-orange-700/20 border-orange-700/30"
-                    }`}
-                >
-                  <span className="text-3xl mb-2">{medals[playerIdx]}</span>
-                  <span className="font-black text-lg text-white truncate w-full text-center">
-                    {player.name}
-                  </span>
-                  <span className="text-primary font-bold text-sm">
-                    {new Intl.NumberFormat().format(player.money)}€
-                  </span>
-                </motion.div>
-              );
-            })}
-          </div>
-
-          <div className="space-y-2">
-            {sortedPlayers.map((player, idx) => (
-              <motion.div
-                key={player.id}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 1.2 + idx * 0.05 }}
-                className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-white/30 font-black w-8">
-                    #{idx + 1}
-                  </span>
-                  <span className="font-bold">
-                    {idx < 3 ? medals[idx] : ""} {player.name}
-                  </span>
-                </div>
-                <MoneyDisplay
-                  amount={player.money}
-                  size="sm"
-                  className="text-primary"
-                />
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
+    return <PodiumScreen players={gameState.players} />;
   }
 
   return (
@@ -165,9 +314,15 @@ export default function GameDashboard() {
             Pregunta Actual
           </h2>
           <div className="text-3xl font-bold text-white flex items-center gap-3">
-            <span className="text-primary">
+            <motion.span
+              key={gameState?.currentQuestionIndex}
+              initial={{ scale: 1.5, color: "#06b6d4" }}
+              animate={{ scale: 1, color: "#06b6d4" }}
+              transition={{ duration: 0.4 }}
+              className="text-primary"
+            >
               {(gameState?.currentQuestionIndex ?? 0) + 1}
-            </span>
+            </motion.span>
             <span className="text-white/30">/</span>
             <span>
               {gameState?.totalQuestions ?? gameState?.questions?.length ?? 8}
@@ -182,20 +337,48 @@ export default function GameDashboard() {
           <div className="flex gap-3">
             <Button
               variant="outline"
-              className="border-primary text-primary hover:bg-primary/10"
-              onClick={() => revealResult(roomCode)}
+              className={clsx(
+                "border-primary text-primary hover:bg-primary/10 transition-all",
+                revealedAnswer &&
+                  "border-green-500 text-green-400 bg-green-500/10 hover:bg-green-500/10 cursor-default",
+              )}
+              onClick={() => !revealedAnswer && revealResult(roomCode)}
               disabled={!!revealedAnswer}
             >
-              <Eye className="mr-2 w-4 h-4" />
-              {revealedAnswer ? "Resposta Revelada" : "Revelar Resposta"}
+              {revealedAnswer ? (
+                <>
+                  <CheckCircle2 className="mr-2 w-4 h-4 text-green-400" />
+                  Resposta Revelada ✓
+                </>
+              ) : (
+                <>
+                  <Eye className="mr-2 w-4 h-4" />
+                  Revelar Resposta
+                </>
+              )}
             </Button>
+
             <Button
-              className="bg-primary hover:bg-primary/80 font-bold"
-              onClick={() => nextQuestion(roomCode)}
-              disabled={!revealedAnswer}
+              className={clsx(
+                "font-bold transition-all",
+                isAdvancing
+                  ? "bg-yellow-500 hover:bg-yellow-500 text-black cursor-wait"
+                  : "bg-primary hover:bg-primary/80",
+              )}
+              onClick={handleNextQuestion}
+              disabled={!revealedAnswer || isAdvancing}
             >
-              Següent Pregunta
-              <ArrowRight className="ml-2 w-4 h-4" />
+              {isAdvancing ? (
+                <>
+                  <Loader2 className="mr-2 w-4 h-4 animate-spin" />
+                  Canviant...
+                </>
+              ) : (
+                <>
+                  Següent Pregunta
+                  <ArrowRight className="ml-2 w-4 h-4" />
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -278,6 +461,7 @@ export default function GameDashboard() {
   );
 }
 
+// ── Fila de jugador ──────────────────────────────────────────────────────────
 function PlayerRow({
   player,
   rank,
@@ -325,8 +509,6 @@ function PlayerRow({
       <div className="flex-1">
         <div className="flex items-center gap-3 mb-1">
           <span className="font-bold text-lg">{player.name}</span>
-
-          {/* ✅ Indicador de cambio de posición */}
           <AnimatePresence>
             {rankChange !== 0 && (
               <motion.div
@@ -354,7 +536,6 @@ function PlayerRow({
               </motion.div>
             )}
           </AnimatePresence>
-
           {isConfirmed && !revealedAnswer && (
             <Badge
               variant="outline"

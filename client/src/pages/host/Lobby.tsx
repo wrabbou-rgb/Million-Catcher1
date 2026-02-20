@@ -10,7 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function Lobby() {
   const [, params] = useRoute("/host/lobby/:code");
   const [, setLocation] = useLocation();
-  const { gameState, startGame, eliminatePlayer } = useGameSocket();
+  const { gameState, startGame, kickPlayer } = useGameSocket();
   const { toast } = useToast();
   const roomCode = params?.code || "";
 
@@ -40,11 +40,11 @@ export default function Lobby() {
     });
   };
 
-  const handleEliminate = (socketId: string, name: string) => {
-    eliminatePlayer(roomCode, socketId);
+  const handleKick = (socketId: string, name: string) => {
+    kickPlayer(roomCode, socketId);
     toast({
-      title: `${name} eliminat`,
-      description: "El jugador ha estat eliminat de la sala.",
+      title: `${name} expulsat`,
+      description: "El jugador ha estat expulsat de la sala.",
     });
   };
 
@@ -114,16 +114,16 @@ export default function Lobby() {
                     {player.name}
                   </span>
 
-                  {/* ✅ Botón eliminar en el lobby */}
+                  {/* Botón expulsar */}
                   <button
                     onClick={() =>
-                      handleEliminate(
+                      handleKick(
                         (player as any).socketId || player.id,
                         player.name,
                       )
                     }
                     className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-red-500/20 text-red-400"
-                    title="Eliminar jugador"
+                    title="Expulsar jugador"
                   >
                     <Trash2 className="w-3 h-3" />
                   </button>

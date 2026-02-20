@@ -8,6 +8,18 @@ import {
 } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 
+export interface GameState {
+  roomCode: string;
+  hostName: string;
+  players: Player[];
+  status: GameStatus;
+  currentQuestion?: Question;
+  currentQuestionIndex: number;
+  questions: Question[];
+  totalQuestions: number;
+  revealedAnswer?: string | null;
+}
+
 export interface Player {
   id: string;
   socketId: string;
@@ -18,23 +30,11 @@ export interface Player {
   hasConfirmed: boolean;
 }
 
-export interface GameState {
-  roomCode: string;
-  hostName: string;
-  players: Player[];
-  status: GameStatus;
-  currentQuestion?: Question;
-  currentQuestionIndex: number;
-  questionIndex: number;
-  totalQuestions: number;
-  questions?: Question[];
-  revealedAnswer?: string | null;
-}
-
 export function useGameSocket() {
   const [isConnected, setIsConnected] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [kicked, setKicked] = useState<string | null>(null); // mensaje de expulsión
   const { toast } = useToast();
 
   useEffect(() => {
@@ -49,7 +49,6 @@ export function useGameSocket() {
       setIsConnected(false);
     }
 
-    // STATE_UPDATE: merge completo
     function onStateUpdate(newState: Partial<GameState>) {
       setGameState((prev) => {
         if (!prev) return newState as GameState;
@@ -57,13 +56,15 @@ export function useGameSocket() {
       });
     }
 
-    // PLAYERS_UPDATE: solo actualiza la lista de jugadores (para CONFIRM_BET)
-    // evita interferencias con el resto del estado
     function onPlayersUpdate(data: { players: Player[] }) {
       setGameState((prev) => {
         if (!prev) return prev;
         return { ...prev, players: data.players };
       });
+    }
+
+    function onKicked(data: { message: string }) {
+      setKicked(data.message);
     }
 
     function onError(error: { message: string }) {
@@ -94,6 +95,7 @@ export function useGameSocket() {
     socket?.on("disconnect", onDisconnect);
     socket?.on(WS_EVENTS.STATE_UPDATE, onStateUpdate);
     socket?.on("PLAYERS_UPDATE", onPlayersUpdate);
+    socket?.on("KICKED", onKicked);
     socket?.on(WS_EVENTS.ERROR, onError);
     socket?.on(WS_EVENTS.ROOM_CREATED, onRoomCreated);
     socket?.on(WS_EVENTS.GAME_STARTED, onGameStarted);
@@ -105,6 +107,7 @@ export function useGameSocket() {
       socket?.off("disconnect", onDisconnect);
       socket?.off(WS_EVENTS.STATE_UPDATE, onStateUpdate);
       socket?.off("PLAYERS_UPDATE", onPlayersUpdate);
+      socket?.off("KICKED", onKicked);
       socket?.off(WS_EVENTS.ERROR, onError);
       socket?.off(WS_EVENTS.ROOM_CREATED, onRoomCreated);
       socket?.off(WS_EVENTS.GAME_STARTED, onGameStarted);
@@ -142,14 +145,19 @@ export function useGameSocket() {
     socketClient.emit(WS_EVENTS.NEXT_QUESTION, { roomCode });
   }, []);
 
-  const eliminatePlayer = useCallback((roomCode: string, socketId: string) => {
-    socketClient.emit("ELIMINATE_PLAYER", { roomCode, socketId });
+  // ✅ Ahora usa KICK_PLAYER en lugar de ELIMINATE_PLAYER
+  const kickPlayer = useCallback((roomCode: string, socketId: string) => {
+    socketClient.emit("KICK_PLAYER", { roomCode, socketId });
   }, []);
+
+  // Mantenemos eliminatePlayer como alias por si GameDashboard lo usa
+  const eliminatePlayer = kickPlayer;
 
   return {
     isConnected,
     socketId: playerId,
     gameState,
+    kicked,
     createRoom,
     joinRoom,
     startGame,
@@ -157,6 +165,7 @@ export function useGameSocket() {
     confirmBet,
     revealResult,
     nextQuestion,
+    kickPlayer,
     eliminatePlayer,
   };
 }

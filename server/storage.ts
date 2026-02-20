@@ -31,6 +31,7 @@ export interface IStorage {
     money: number,
   ): Promise<void>;
   resetPlayerBet(gameId: number, socketId: string): Promise<void>;
+  removePlayer(gameId: number, socketId: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -162,6 +163,13 @@ export class DatabaseStorage implements IStorage {
     await db
       .update(players)
       .set({ currentBet: {}, hasConfirmed: false })
+      .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
+  }
+
+  // ✅ NUEVO: elimina completamente al jugador de la BD
+  async removePlayer(gameId: number, socketId: string): Promise<void> {
+    await db
+      .delete(players)
       .where(and(eq(players.gameId, gameId), eq(players.socketId, socketId)));
   }
 }
