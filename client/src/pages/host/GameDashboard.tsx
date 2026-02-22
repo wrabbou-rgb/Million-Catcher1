@@ -26,8 +26,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
   const top3 = sorted.slice(0, 3);
   const rest = sorted.slice(3);
   const medals = ["🥇", "🥈", "🥉"];
-
-  // Fases: 0=cortina, 1=3r, 2=2n, 3=1r+confeti, 4=taula completa
   const [phase, setPhase] = useState(0);
 
   useEffect(() => {
@@ -37,8 +35,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
       setTimeout(() => setPhase(3), 6500),
       setTimeout(() => setPhase(4), 9000),
     ];
-
-    // Confeti quan apareix el primer
     const confettiTimer = setTimeout(() => {
       const end = Date.now() + 5000;
       (function frame() {
@@ -59,7 +55,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
         if (Date.now() < end) requestAnimationFrame(frame);
       })();
     }, 6500);
-
     return () => {
       timers.forEach(clearTimeout);
       clearTimeout(confettiTimer);
@@ -69,8 +64,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
   return (
     <div className="min-h-screen bg-background flex flex-col items-center justify-center p-8 relative overflow-hidden">
       <Watermark />
-
-      {/* ── Cortina inicial ── */}
       <AnimatePresence>
         {phase === 0 && (
           <motion.div
@@ -98,12 +91,8 @@ function PodiumScreen({ players }: { players: Player[] }) {
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Fons brillant */}
       <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/8 via-transparent to-purple-500/5 z-0" />
-
       <div className="relative z-10 w-full max-w-3xl text-center">
-        {/* Títol */}
         <motion.div
           initial={{ opacity: 0, y: -40 }}
           animate={{ opacity: phase >= 1 ? 1 : 0, y: phase >= 1 ? 0 : -40 }}
@@ -115,10 +104,7 @@ function PodiumScreen({ players }: { players: Player[] }) {
             CLASSIFICACIÓ FINAL
           </h1>
         </motion.div>
-
-        {/* ── Podi visual — ordre: 3r | 1r | 2n ── */}
         <div className="flex items-end justify-center gap-3 mb-12 min-h-[280px]">
-          {/* 3r lloc — apareix primer */}
           <div className="flex-1">
             <AnimatePresence>
               {phase >= 1 && top3[2] && (
@@ -140,8 +126,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
               )}
             </AnimatePresence>
           </div>
-
-          {/* 1r lloc — apareix últim, centre, més alt */}
           <div className="flex-1">
             <AnimatePresence>
               {phase >= 3 && top3[0] && (
@@ -169,8 +153,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
               )}
             </AnimatePresence>
           </div>
-
-          {/* 2n lloc — apareix segon */}
           <div className="flex-1">
             <AnimatePresence>
               {phase >= 2 && top3[1] && (
@@ -193,8 +175,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
             </AnimatePresence>
           </div>
         </div>
-
-        {/* ── Classificació completa ── */}
         <AnimatePresence>
           {phase >= 4 && (
             <motion.div
@@ -232,7 +212,6 @@ function PodiumScreen({ players }: { players: Player[] }) {
             </motion.div>
           )}
         </AnimatePresence>
-
         {phase >= 1 && phase < 4 && rest.length > 0 && (
           <p className="text-white/20 text-sm mt-6">
             {rest.length} jugador{rest.length > 1 ? "s" : ""} més...
@@ -253,6 +232,7 @@ export default function GameDashboard() {
   const [isAdvancing, setIsAdvancing] = useState(false);
   const [justAdvanced, setJustAdvanced] = useState(false);
   const prevRankRef = useRef<Record<string, number>>({});
+  const rankInitialized = useRef(false);
   const [rankChanges, setRankChanges] = useState<Record<string, number>>({});
 
   const sortedPlayers = [...(gameState?.players || [])].sort((a, b) => {
@@ -266,6 +246,7 @@ export default function GameDashboard() {
   );
   const revealedAnswer: string | null =
     (gameState as any)?.revealedAnswer ?? null;
+  const confirmedCount = activePlayers.filter((p) => p.hasConfirmed).length;
 
   useEffect(() => {
     if (justAdvanced && !revealedAnswer) {
@@ -274,12 +255,23 @@ export default function GameDashboard() {
     }
   }, [revealedAnswer, justAdvanced]);
 
+  // ✅ Fix: trackea money Y hasConfirmed para detectar cambios en la primera pregunta
+  // ✅ Fix: inicializa prevRankRef la primera vez que llegan jugadores (sin emitir cambios)
   useEffect(() => {
     if (sortedPlayers.length === 0) return;
+
     const currentRank: Record<string, number> = {};
     sortedPlayers.forEach((p, i) => {
       currentRank[p.id] = i + 1;
     });
+
+    // Primera vez: solo guardamos la referencia, no emitimos cambios
+    if (!rankInitialized.current) {
+      prevRankRef.current = currentRank;
+      rankInitialized.current = true;
+      return;
+    }
+
     const changes: Record<string, number> = {};
     sortedPlayers.forEach((p) => {
       const prev = prevRankRef.current[p.id];
@@ -287,12 +279,26 @@ export default function GameDashboard() {
         changes[p.id] = prev - currentRank[p.id];
       }
     });
+
     if (Object.keys(changes).length > 0) {
       setRankChanges(changes);
       setTimeout(() => setRankChanges({}), 3000);
     }
+
     prevRankRef.current = currentRank;
-  }, [JSON.stringify(sortedPlayers.map((p) => p.id + p.money))]);
+    // ✅ Escucha money Y hasConfirmed para actualizar en tiempo real
+  }, [
+    JSON.stringify(
+      sortedPlayers.map((p) => `${p.id}-${p.money}-${p.hasConfirmed}`),
+    ),
+  ]);
+
+  // ✅ Reset del ranking al cambiar de pregunta
+  useEffect(() => {
+    rankInitialized.current = false;
+    prevRankRef.current = {};
+    setRankChanges({});
+  }, [gameState?.currentQuestionIndex]);
 
   const handleNextQuestion = () => {
     setIsAdvancing(true);
@@ -383,33 +389,33 @@ export default function GameDashboard() {
           </div>
         </div>
 
+        {/* ✅ Contador de confirmats */}
         <div className="text-right">
           <h2 className="text-muted-foreground uppercase tracking-wider text-sm font-semibold mb-1">
             Han Confirmat
           </h2>
           <div className="text-3xl font-bold text-white flex items-center justify-end gap-2">
             <motion.span
-              key={activePlayers.filter((p) => p.hasConfirmed).length}
+              key={confirmedCount}
               initial={{ scale: 1.4 }}
               animate={{ scale: 1 }}
               transition={{ duration: 0.25 }}
               className={clsx(
                 "font-black",
-                activePlayers.filter((p) => p.hasConfirmed).length ===
-                  activePlayers.length && activePlayers.length > 0
+                confirmedCount === activePlayers.length &&
+                  activePlayers.length > 0
                   ? "text-green-400"
                   : "text-yellow-400",
               )}
             >
-              {activePlayers.filter((p) => p.hasConfirmed).length}
+              {confirmedCount}
             </motion.span>
             <span className="text-white/30">/</span>
             <span>{activePlayers.length}</span>
           </div>
           {!revealedAnswer &&
             activePlayers.length > 0 &&
-            activePlayers.filter((p) => p.hasConfirmed).length ===
-              activePlayers.length && (
+            confirmedCount === activePlayers.length && (
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -562,12 +568,14 @@ function PlayerRow({
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* ✅ Badge confirmat: apareix en quant el jugador confirma, fins que es revela */}
           {isConfirmed && !revealedAnswer && (
             <Badge
               variant="outline"
               className="bg-green-500/10 text-green-500 border-green-500/50 text-xs"
             >
-              Resposta Confirmada
+              ✓ Confirmat
             </Badge>
           )}
           {revealedAnswer && didWin && (
